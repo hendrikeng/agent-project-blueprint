@@ -1,0 +1,74 @@
+name: ci-candidate
+run-name: CI candidate ${{ inputs.revision }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      revision:
+        description: Exact dev ancestor to validate (lowercase 40-character commit SHA)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-candidate-${{ inputs.revision }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "{{NODE_VERSION}}"
+  CI_INSTALL_COMMAND: "{{CI_INSTALL_COMMAND}}"
+
+jobs:
+  candidate:
+    name: Candidate Full Validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Validate trusted dispatch
+        env:
+          REVISION: ${{ inputs.revision }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          test "$GITHUB_EVENT_NAME" = workflow_dispatch
+          test "$GITHUB_REF" = "refs/heads/$DEFAULT_BRANCH"
+          [[ "$REVISION" =~ ^[a-f0-9]{40}$ ]]
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.revision }}
+          fetch-depth: 0
+      - name: Require the exact dev ancestor
+        env:
+          REVISION: ${{ inputs.revision }}
+        run: |
+          git fetch origin dev
+          test "$(git rev-parse HEAD)" = "$REVISION"
+          git merge-base --is-ancestor "$REVISION" origin/dev
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: corepack enable
+      - run: ${{ env.CI_INSTALL_COMMAND }}
+      - run: npm run eval:refresh && git diff --exit-code -- docs/generated/evals-report.json
+      - run: npm run verify:fast
+      - run: npm run verify:full -- --skip-fast
+      - name: Record successful validation identity
+        env:
+          REVISION: ${{ inputs.revision }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/ci-candidate-evidence"
+          node --input-type=module -e '
+            import fs from "node:fs";
+            const e = process.env;
+            fs.writeFileSync(`${e.RUNNER_TEMP}/ci-candidate-evidence/evidence.json`, JSON.stringify({
+              revision: e.REVISION, repository: e.GITHUB_REPOSITORY,
+              run_id: e.GITHUB_RUN_ID, run_attempt: e.GITHUB_RUN_ATTEMPT
+            }) + "\n");
+          '
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ci-candidate-${{ inputs.revision }}
+          path: ${{ runner.temp }}/ci-candidate-evidence/evidence.json
+          if-no-files-found: error
+          retention-days: 14

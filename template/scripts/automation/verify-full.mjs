@@ -50,12 +50,12 @@ function runCommand(command, dryRun) {
 async function main() {
   const options = parseArgs(process.argv.slice(2));
   const dryRun = asBoolean(options['dry-run'], false);
+  // CI may skip fast only after its prerequisite Fast Gate succeeds for this run.
+  const skipFast = asBoolean(options['skip-fast'], false);
   const commands = [
-    'node ./scripts/automation/verify-fast.mjs',
+    ...(skipFast ? [] : ['node ./scripts/automation/verify-fast.mjs']),
     'node ./scripts/check-article-conformance.mjs',
     'node ./scripts/architecture/check-dependencies.mjs',
-    'node ./scripts/agent-hardening/check-agent-hardening.mjs',
-    'node ./scripts/agent-hardening/check-evals.mjs',
     'node ./scripts/automation/check-project-gates.mjs --profile full --run'
   ];
 

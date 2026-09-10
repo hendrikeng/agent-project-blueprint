@@ -211,8 +211,20 @@ export function changedFilesFromNameStatus(output) {
   return [...new Set(changed)];
 }
 
+export function isCandidateDispatch(head, env, event) {
+  const trustedRef = `refs/heads/${event?.repository?.default_branch}`;
+  return env.GITHUB_ACTIONS === 'true' && env.GITHUB_EVENT_NAME === 'workflow_dispatch' &&
+    /^[a-f0-9]{40}$/.test(head) && event?.inputs?.revision === head &&
+    Boolean(event?.repository?.default_branch) && event?.repository?.full_name === env.GITHUB_REPOSITORY &&
+    env.GITHUB_REF === trustedRef && event?.ref === trustedRef &&
+    (!env.PLAN_CLOSEOUT_BRANCH_NAME || env.PLAN_CLOSEOUT_BRANCH_NAME.replace(/^refs\/heads\//, '') === 'dev') &&
+    env.GITHUB_WORKFLOW_REF === `${env.GITHUB_REPOSITORY}/.github/workflows/ci-candidate.yml@${trustedRef}`;
+}
+
 export function resolveCloseoutBranch(actualBranch, head, env, event = null) {
   if (actualBranch && env.GITHUB_ACTIONS !== 'true') return actualBranch;
+  // The caller also proves origin/dev ancestry before accepting this selected checkout.
+  if (!actualBranch && isCandidateDispatch(head, env, event)) return 'dev';
   if (env.GITHUB_ACTIONS !== 'true' || env.GITHUB_SHA !== head) {
     throw new Error('Detached closeout requires GitHub event context matching the checked-out commit.');
   }

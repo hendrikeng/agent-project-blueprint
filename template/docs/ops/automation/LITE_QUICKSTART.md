@@ -52,7 +52,8 @@ If any condition stops being true, create or promote a normal plan.
 
 - Use focused commands for the touched behavior first.
 - Use `npm run verify:fast` during normal implementation and direct fixes that touch shared harness, docs, gates, or runtime context.
-- Use `npm run verify:full` before merge, release candidates, and medium or high risk changes.
+- Use `npm run verify:full` for selected deployment candidates, release promotion, and local medium or high risk validation.
+- Use the project-owned CI classifier for ordinary PRs. Require exact candidate evidence before deployment, as defined in `docs/ops/automation/INTEROP_GITHUB.md`.
 - Run narrower checks when their surfaces are directly touched or when a verifier asks for them.
 
 ## Non-Negotiables
