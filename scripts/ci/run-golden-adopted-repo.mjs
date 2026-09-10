@@ -676,7 +676,8 @@ function runCommand(repoDir, command, extraEnv = {}) {
     cwd: repoDir,
     shell: true,
     stdio: 'inherit',
-    env: { ...process.env, ...extraEnv }
+    // This repository has its own release history, not the parent Actions commit.
+    env: { ...process.env, ...extraEnv, GITHUB_ACTIONS: 'false' }
   });
   if (result.error) {
     throw result.error;
@@ -730,7 +731,7 @@ async function main() {
     'npm run quality:score',
     'npm run eval:verify',
     'npm run plans:verify -- --scope all',
-    'npm run verify:fast',
+    // Standalone full includes fast; run the adopted application's gates once.
     'npm run verify:full',
     `npm run release:verify -- --base ${releaseBase}`,
     `npm run release:notes -- --base ${releaseBase}`

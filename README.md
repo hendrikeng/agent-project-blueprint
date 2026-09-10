@@ -225,5 +225,7 @@ Keep the work agent-portable: any capable coding agent must be able to resume fr
 - `npm run test:golden-adopted-repo`
 - `npm test`
 
+Root tests cover the distribution and bootstrap scripts. Template smoke owns the configured harness regression suite, including the CI classifier tests.
+The golden fixture separately checks adoption into a real application. Its standalone full command includes fast checks without a second fast run.
 CI runs the golden adoption workflow once on Linux with Node.js 24.x. It uses the public install, adopt, and configure commands.
 The smoke and golden fixtures record real harness-test output under fixture-specific eval configs. They do not claim that agent evaluations passed.
