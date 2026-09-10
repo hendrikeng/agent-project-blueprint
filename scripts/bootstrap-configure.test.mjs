@@ -43,7 +43,7 @@ for (const owner of ['@acme/platform', '@hendrikeng']) test(`bootstrap configure
   assert.equal(workflow.match(/- run: corepack enable/g)?.length, 2);
   assert.match(workflow, /push:\s+branches: \[dev, main\]/);
   assert.match(workflow, /needs: \[scope, fast-gate, release-candidate-gate\]\s+if: always\(\)/);
-  assert.match(workflow, /npm run verify:full -- --skip-fast\s+if: needs.scope.outputs.scope == 'full'/);
+  assert.match(workflow, /npm run verify:full -- --skip-fast\s+if: needs.scope.outputs.scope == 'full' \|\| \(github.event_name == 'pull_request' && \(needs.scope.outputs.scope == 'broad' \|\| needs.scope.outputs.scope == 'harness'\)\)/);
   assert.match(workflow, /'Metadata Result' \|\| 'Full Gate'/);
   const candidate = await fs.readFile(path.join(targetDir, '.github/workflows/ci-candidate.yml'), 'utf8');
   assert.match(candidate, /run-name: CI candidate \$\{\{ inputs.revision \}\}/);

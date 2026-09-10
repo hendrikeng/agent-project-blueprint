@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
+import { classifyChanges } from '../template/scripts/ci/classify-change.mjs';
 
 const workflow = (name) => readFileSync(new URL(`../template/.github/workflows/${name}.yml`, import.meta.url), 'utf8');
 
@@ -22,6 +23,37 @@ test('default CI retains required aggregates, contract, and release coverage', (
   assert.match(ci, /RELEASE_HEAD_REF: \$\{\{ github.event.pull_request.head.sha \}\}/);
   assert.match(ci, /npm run release:verify -- --allow-any-branch/);
   assert.doesNotMatch(ci, /staging|preview|environment:|railway|wrangler/i);
+});
+
+test('risk PRs run full after broad fast, without requiring release checks or widening dev pushes', () => {
+  const ci = workflow('ci');
+  // These workflow expressions use the same comparisons and boolean operators as JS.
+  const fullCondition = ci.match(/npm run verify:full -- --skip-fast\s+if: ([^\n]+)/)[1];
+  const releaseCondition = ci.match(/RELEASE_REQUIRED: \$\{\{ (.+) \}\}/)[1];
+  const fastScript = ci.match(/name: Focused fast validation[\s\S]*?run: \|\n([\s\S]*?)      - run:/)[1];
+  for (const [path, fullOnPr] of [
+    ['src/auth/session.ts', true], ['src/schema.ts', true], ['package-lock.json', true],
+    ['src/shared/types.ts', true], ['unknown.file', true], ['scripts/automation/verify-fast.mjs', true],
+    ['src/components/Card.vue', false], ['docs/product-specs/cards.md', false]
+  ]) {
+    const scope = classifyChanges([{ path, status: 'M' }]);
+    for (const event_name of ['pull_request', 'push']) {
+      const github = { event_name };
+      const needs = { scope: { outputs: { scope } } };
+      assert.equal(new Function('github', 'needs', `return (${fullCondition})`)(github, needs), event_name === 'pull_request' && fullOnPr, `${path}: ${event_name}`);
+      assert.equal(new Function('github', 'needs', `return (${releaseCondition})`)(github, needs), false);
+      const fast = spawnSync('bash', ['-e', '-c', `npm() { printf '%s' "$*"; };\n${fastScript}`], {
+        encoding: 'utf8', env: { ...process.env, SCOPE: scope, GITHUB_EVENT_NAME: event_name }
+      });
+      assert.equal(fast.status, 0, fast.stderr);
+      assert.equal(fast.stdout, `run verify:fast -- --scope ${event_name === 'pull_request' && fullOnPr ? 'broad' : scope}`);
+    }
+  }
+  for (const event_name of ['pull_request', 'push', 'merge_group']) {
+    const needs = { scope: { outputs: { scope: 'full' } } };
+    assert.equal(new Function('github', 'needs', `return (${fullCondition})`)({ event_name }, needs), true);
+    assert.equal(new Function('github', 'needs', `return (${releaseCondition})`)({ event_name }, needs), event_name !== 'push');
+  }
 });
 
 test('candidate dispatch validates trust before checkout and records success-only exact evidence', () => {

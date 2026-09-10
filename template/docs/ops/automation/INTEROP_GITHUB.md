@@ -35,11 +35,12 @@ The check names remain `Fast Gate`, `Full Gate`, and `Release Candidate Gate`.
 
 `scripts/ci/classify-change.mjs` selects explicit product, docs, harness, or broad fast validation.
 Product changes run the declared fast project commands. Docs changes run documentation and safety checks without product or harness test suites.
-Harness changes run harness regression tests and agent readiness checks.
+Harness PRs run broad fast verification before full verification, including product tests, harness regressions, and agent readiness checks.
 Every code scope retains strict eval evidence, governance, path policy, plan closeout, quality, and harness alignment checks.
 Unknown, deleted, mixed, shared-configuration, and sensitive changes select broad fast validation.
 
-Full validation runs for selected candidates, PRs to `main`, `main` pushes, and `main` merge groups. Dev pushes run fast validation only.
+Full validation runs for broad or harness PRs, selected candidates, PRs to `main`, `main` pushes, and `main` merge groups.
+Dev pushes run fast validation only. Ordinary risk PRs do not require release verification.
 Standalone `npm run verify:full` includes broad fast verification. CI uses `--skip-fast` only after successful broad fast verification in the same job.
 Strict eval and agent checks belong to fast verification, so full verification does not repeat them.
 Full Gate aggregates the selected checks and rejects failed, skipped, or canceled required jobs. Its compatibility name does not imply full-suite execution on every PR.

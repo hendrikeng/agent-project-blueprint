@@ -21,11 +21,11 @@ This slice continues the phase-one changes. Publication is now authorized. Merge
 Fast verification retains governance, plan closeout, path policy, quality, harness alignment, and strict eval evidence checks in every code scope.
 Product changes run the declared fast project commands without the harness regression suite.
 Docs changes run documentation and safety checks without product tests or the harness regression suite.
-Harness changes run harness regressions and agent readiness checks. They do not bypass strict agent eval requirements.
+Harness PRs run broad fast verification, then full verification. They retain product tests, harness regressions, agent readiness, and strict eval requirements.
 Unknown, deleted, shared-configuration, sensitive, or mixed changes use the broad fast scope.
 
-Full commands run for exact selected candidates, PRs to main, main pushes, and main merge groups.
-Dev pushes do not run full validation. Required full project commands remain at the candidate and release boundaries.
+Full commands run for broad or harness PRs, exact selected candidates, PRs to main, main pushes, and main merge groups.
+Dev pushes do not run full validation. Ordinary risk PRs require full project commands, but not release verification.
 Standalone full verification still includes broad fast verification. CI runs those fast commands once before the remaining full commands.
 
 `Full Gate` is a compatibility name for the selected-scope aggregate, not proof that full suites ran on every PR.

@@ -76,10 +76,10 @@ jobs:
         env:
           SCOPE: ${{ needs.scope.outputs.scope }}
         run: |
-          if [ "$SCOPE" = full ]; then SCOPE=broad; fi
+          if [ "$SCOPE" = full ] || { [ "$GITHUB_EVENT_NAME" = pull_request ] && [ "$SCOPE" = harness ]; }; then SCOPE=broad; fi
           npm run verify:fast -- --scope "$SCOPE"
       - run: npm run verify:full -- --skip-fast
-        if: needs.scope.outputs.scope == 'full'
+        if: needs.scope.outputs.scope == 'full' || (github.event_name == 'pull_request' && (needs.scope.outputs.scope == 'broad' || needs.scope.outputs.scope == 'harness'))
 
   release-candidate-gate:
     name: ${{ github.event_name == 'pull_request' && (github.event.action == 'edited' || github.event.action == 'ready_for_review') && !github.event.changes.base && 'Metadata Release (not evidence)' || 'Release Candidate Gate' }}

@@ -66,7 +66,7 @@ Source of Truth: This document.
 - Gate commands must call the real project toolchain; no no-op commands, recursive aggregate commands, or unresolved placeholders.
 - Standalone `verify:fast` runs broad fast verification. CI can select explicit product, docs, or harness scopes while retaining mandatory safety checks.
 - `verify:full` includes broad fast verification and all full project gates. CI can skip fast only after successful broad fast verification.
-- Full CI runs at exact selected candidate and main/release boundaries, not on every dev push.
+- Full CI runs for broad or harness PRs, exact selected candidates, and main/release boundaries, not on ordinary dev pushes.
 - Project-owned classifiers must keep unknown, deleted, shared-configuration, and sensitive changes broad.
 - Metadata-only checks cannot replace code evidence. Base edits require code validation again.
 - The CI scope and deployment proof contract lives in `docs/ops/automation/INTEROP_GITHUB.md`.
