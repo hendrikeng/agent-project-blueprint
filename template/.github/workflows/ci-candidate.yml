@@ -71,4 +71,5 @@ jobs:
           name: ci-candidate-${{ inputs.revision }}
           path: ${{ runner.temp }}/ci-candidate-evidence/evidence.json
           if-no-files-found: error
+          overwrite: true
           retention-days: 14

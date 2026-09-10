@@ -1,6 +1,6 @@
 # Budget-aware CI completion
 
-Status: locally validated, public CI verification pending
+Status: implementation committed, publication blocked by runtime permissions
 Scope: blueprint source in `ci-budget-blueprint`, based on `d6b807c9`.
 
 This slice continues the phase-one changes. Publication is now authorized. Merge and hosted configuration changes remain outside worker authority.
@@ -64,6 +64,20 @@ Autoreview with Codex `gpt-6-astra` at medium thinking returned `scoped-clean` w
 The verified review status and report are in `/Users/hendrik/.pi/agent/review-results/review-kn_n_o8i/`.
 An optional redirected wrapper log lacked permission. The documented foreground helper then completed with its default report paths.
 No permissions changed. The public root OS/Node matrix remains unchanged.
+
+Implementation commit: `fdd5fa8` (`feat: add scoped CI and exact candidate validation defaults`).
+The git yolo guard denied `git push -u origin hendrikeng/ci-budget-blueprint` as an unsupported unattended push.
+No dedicated authorized push tool is available. No remote branch or PR publication is claimed.
+The prepared PR body is `/Users/hendrik/Code/.agent-toolkit-scratch/ci-budget-blueprint.4Bxugz/pr-body.md`.
+The coordinator requested failed delivery closeout, with code completion recorded separately.
+
+A cross-repository review identified a candidate artifact rerun conflict. The upload now uses `overwrite: true` with the same exact-revision name.
+A successful rerun replaces the artifact with the current run attempt identity. Deployment consumers still must reject failed or mismatched attempts.
+All three focused workflow tests passed again. The repeat complexity pass found nothing to remove.
+The first repeat correctness review identified the old index version, not the corrected working tree, as missing `overwrite: true`.
+The final staged review returned `scoped-clean` with no actionable P0–P2 findings, again using Astra at medium thinking.
+Verified final report: `/Users/hendrik/.pi/agent/review-results/review-woahwrzy/report.txt`.
+The follow-up commit contains the corrected workflow and its regression assertion.
 Cache placeholders remain unchanged because the solution adds no package-manager-specific dependency or cache setup.
 Hosted event behavior, required-check configuration, and billed savings still need observation after merge and adoption.
 Local fixtures do not claim hosted proof, agent evaluation results for applications, or complete safety.

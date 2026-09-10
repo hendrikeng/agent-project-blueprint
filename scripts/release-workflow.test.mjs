@@ -40,7 +40,7 @@ test('candidate dispatch validates trust before checkout and records success-onl
   assert.ok(ci.indexOf('Record successful validation identity') > ci.indexOf('npm run verify:full'));
   assert.match(ci, /run_id: e.GITHUB_RUN_ID, run_attempt: e.GITHUB_RUN_ATTEMPT/);
   assert.match(ci, /name: ci-candidate-\$\{\{ inputs.revision \}\}/);
-  assert.match(ci, /if-no-files-found: error/);
+  assert.match(ci, /if-no-files-found: error\s+overwrite: true/);
   assert.doesNotMatch(ci, /if: always|continue-on-error|secrets:|environment:|contents: write/);
 });
 
