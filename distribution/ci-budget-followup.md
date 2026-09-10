@@ -17,7 +17,9 @@ Scope: blueprint test discovery and fixture execution. No publishing or deployme
 - The identity regression rejects the inherited parent identity and accepts the fixture's real local release branch.
 - Independent review returned `scoped-clean`: `review-cuuu1_0x` under the authorized review root.
 - The prior smoke run reached the release fixture, where the runtime guard denied `git checkout -b dev`. The unchanged denied command was not retried.
-- Full smoke and golden execution still require an environment that permits their fixture Git operations.
+- The operator subsequently ran both fixture commands in a normal terminal against commit `cc7abfa`. Both passed.
+- Verified logs: `/Users/hendrik/Code/.agent-toolkit-scratch/ci-proof.liziMQ/blueprint-smoke.log` and `blueprint-golden.log`.
+- All local blueprint test commands now have passing evidence. The agent did not retry the denied fixture Git command.
 
 ## Hosted evidence
 
