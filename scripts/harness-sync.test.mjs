@@ -442,7 +442,8 @@ test('project-owned files survive edits, deletion, and legacy ownership release 
   const manifestPath = path.join(target, 'docs/ops/automation/harness-manifest.json');
   const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
   const paths = ['README.md', 'VISION.md', 'AGENTS.md', 'docs/product-specs/CURRENT-STATE.md',
-    'docs/governance/project-gates.json', 'docs/generated/evals-report.json', '.github/workflows/ci.yml'];
+    'docs/governance/project-gates.json', 'docs/generated/evals-report.json', '.github/workflows/ci.yml',
+    '.github/workflows/ci-candidate.yml', 'scripts/ci/classify-change.mjs', 'scripts/ci/classify-change.test.mjs'];
   for (const relative of paths) {
     assert.equal(manifest.managedFiles.some((entry) => entry.targetPath === relative), false);
     assert.equal(manifest.projectFiles.some((entry) => entry.targetPath === relative), true);

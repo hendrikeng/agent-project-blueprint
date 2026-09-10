@@ -41,6 +41,15 @@ Workflows are project-owned starter files. Review and adapt them separately when
 PR templates and release helpers remain managed. Existing local customizations still require reviewed reconciliation.
 Do not assume that a managed-script update also installed the new tag workflow or deployment controls.
 
+Starter CI avoids feature-push duplication and selects explicit product, docs, harness, or broad fast validation.
+Metadata contracts do not replace code-check evidence. Base edits run code validation again.
+Full validation runs for broad or harness PRs, selected exact-SHA candidates, and main/release boundaries, not every dev push.
+Standalone full verification still includes broad fast verification. CI runs those commands once.
+Workflows, project gates, and `scripts/ci/**` need explicit downstream adoption, not automatic synchronization.
+The [CI adoption guide](template/docs/ops/automation/INTEROP_GITHUB.md#ci-budget-defaults) defines required checks and deployment proof.
+The [completion record](distribution/ci-budget-completion.md) describes the scope and evidence.
+The public blueprint CI retains its four-job OS/Node matrix unchanged. It does not use the private 5of5 minutes budget.
+
 ## Start Here
 
 - [template/AGENTS.md](template/AGENTS.md)
@@ -216,5 +225,7 @@ Keep the work agent-portable: any capable coding agent must be able to resume fr
 - `npm run test:golden-adopted-repo`
 - `npm test`
 
+Root tests cover the distribution and bootstrap scripts. Template smoke owns the configured harness regression suite, including the CI classifier tests.
+The golden fixture separately checks adoption into a real application. Its standalone full command includes fast checks without a second fast run.
 CI runs the golden adoption workflow once on Linux with Node.js 24.x. It uses the public install, adopt, and configure commands.
 The smoke and golden fixtures record real harness-test output under fixture-specific eval configs. They do not claim that agent evaluations passed.

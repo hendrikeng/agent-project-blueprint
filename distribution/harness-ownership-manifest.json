@@ -12,6 +12,7 @@
     "*.md",
     ".github/CODEOWNERS",
     ".github/workflows/**",
+    "scripts/ci/**",
     "docs/*.md",
     "docs/architecture/**",
     "docs/deploy/**",

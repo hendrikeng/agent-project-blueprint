@@ -7,6 +7,7 @@ import {
   assertProtectedBranchHasNoActivePlans,
   changedFilesFromNameStatus,
   isActivePlanPath,
+  isCandidateDispatch,
   isLocalFeatureIteration,
   resolveCloseoutBase,
   resolveCloseoutBranch,
@@ -34,6 +35,9 @@ try {
   const [head, ...parents] = gitOutput(['rev-list', '--parents', '-n', '1', 'HEAD']).split(/\s+/);
   const event = (process.env.GITHUB_ACTIONS === 'true' || !actualBranch) && process.env.GITHUB_EVENT_PATH
     ? JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8')) : null;
+  if (isCandidateDispatch(head, process.env, event)) {
+    gitBytes(['merge-base', '--is-ancestor', head, 'origin/dev']);
+  }
   const branchName = resolveCloseoutBranch(actualBranch, head, process.env, event);
   const changeBranchName = event && process.env.GITHUB_EVENT_NAME === 'pull_request'
     ? event.pull_request.head?.ref || branchName : branchName;

@@ -64,7 +64,12 @@ Source of Truth: This document.
 - Every adopted project must declare real lint, typecheck, unit-test, and build gates or fail bootstrap verification.
 - Optional gates such as integration tests, migration integrity, browser smoke, security audit, release verification, and deployment verification must be either wired to a real command or marked `deferred`/`not-applicable` with a concrete rationale.
 - Gate commands must call the real project toolchain; no no-op commands, recursive aggregate commands, or unresolved placeholders.
-- `verify:fast` runs the fast project gates, and `verify:full` runs the full project gates.
+- Standalone `verify:fast` runs broad fast verification. CI can select explicit product, docs, or harness scopes while retaining mandatory safety checks.
+- `verify:full` includes broad fast verification and all full project gates. CI can skip fast only after successful broad fast verification.
+- Full CI runs for broad or harness PRs, exact selected candidates, and main/release boundaries, not on ordinary dev pushes.
+- Project-owned classifiers must keep unknown, deleted, shared-configuration, and sensitive changes broad.
+- Metadata-only checks cannot replace code evidence. Base edits require code validation again.
+- The CI scope and deployment proof contract lives in `docs/ops/automation/INTEROP_GITHUB.md`.
 - Gate status must be truthful. A missing test harness is `deferred`, not a fake required command.
 - Deployment, migration, and release gates must be added before the project treats those surfaces as production-ready.
 
@@ -103,7 +108,7 @@ Historical merge receipts remain audit records. The checker does not reuse them 
 
 - Fast iteration profile: `npm run verify:fast`
   - Scope-aware checks + mandatory safety checks.
-- Full merge profile: `npm run verify:full`
+- Full candidate and release profile: `npm run verify:full`
   - `node ./scripts/automation/compile-runtime-context.mjs`
   - `node ./scripts/docs/check-governance.mjs`
   - `node ./scripts/check-article-conformance.mjs`

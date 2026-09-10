@@ -40,7 +40,16 @@ for (const owner of ['@acme/platform', '@hendrikeng']) test(`bootstrap configure
   assert.equal(JSON.stringify(projectGates).includes('eslint \\"src/**/*.ts\\"'), true);
   const workflow = await fs.readFile(path.join(targetDir, '.github', 'workflows', 'ci.yml'), 'utf8');
   assert.equal(workflow.includes(`CI_INSTALL_COMMAND: ${JSON.stringify('pnpm --filter "@acme/*\\tools" install')}`), true);
-  assert.equal(workflow.match(/- run: corepack enable/g)?.length, 3);
+  assert.equal(workflow.match(/- run: corepack enable/g)?.length, 2);
+  assert.match(workflow, /push:\s+branches: \[dev, main\]/);
+  assert.match(workflow, /needs: \[scope, fast-gate, release-candidate-gate\]\s+if: always\(\)/);
+  assert.match(workflow, /npm run verify:full -- --skip-fast\s+if: needs.scope.outputs.scope == 'full' \|\| \(github.event_name == 'pull_request' && \(needs.scope.outputs.scope == 'broad' \|\| needs.scope.outputs.scope == 'harness'\)\)/);
+  assert.match(workflow, /'Metadata Result' \|\| 'Full Gate'/);
+  const candidate = await fs.readFile(path.join(targetDir, '.github/workflows/ci-candidate.yml'), 'utf8');
+  assert.match(candidate, /run-name: CI candidate \$\{\{ inputs.revision \}\}/);
+  assert.match(candidate, /run_id: e.GITHUB_RUN_ID, run_attempt: e.GITHUB_RUN_ATTEMPT/);
+  const classifier = await fs.readFile(path.join(targetDir, 'scripts/ci/classify-change.mjs'), 'utf8');
+  assert.match(classifier, /Project-owned/);
   const packageJson = JSON.parse(await fs.readFile(path.join(targetDir, 'package.json'), 'utf8'));
   const manifest = JSON.parse(await fs.readFile(path.join(targetDir, 'docs/ops/automation/harness-manifest.json'), 'utf8'));
   assert.equal(manifest.decisionsPath, 'docs/ops/automation/bootstrap-decisions.json');

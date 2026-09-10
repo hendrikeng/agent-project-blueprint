@@ -75,7 +75,7 @@ function resolvedPlanMetadataCommand() {
   return `node ./scripts/automation/check-plan-metadata.mjs --plan-id ${planId}`;
 }
 
-function buildCommandSet(changedFiles) {
+function buildCommandSet(changedFiles, scope) {
   const commands = [
     'node ./scripts/automation/compile-runtime-context.mjs',
     'node ./scripts/automation/lint-changed.mjs',
@@ -83,12 +83,13 @@ function buildCommandSet(changedFiles) {
     'node ./scripts/docs/repair-plan-references.mjs --check',
     'node ./scripts/docs/check-governance.mjs',
     'node ./scripts/agent-hardening/check-evals.mjs',
-    'npm run harness:test',
+    ...(['broad', 'harness'].includes(scope) ? ['npm run harness:test'] : []),
     resolvedPlanMetadataCommand(),
     'node ./scripts/automation/check-plan-closeout.mjs',
     'node ./scripts/automation/check-harness-alignment.mjs',
     'node ./scripts/automation/check-quality-score.mjs',
-    'node ./scripts/automation/check-project-gates.mjs --profile fast --run'
+    `node ./scripts/automation/check-project-gates.mjs --profile fast${['broad', 'product'].includes(scope) ? ' --run' : ''}`,
+    ...(['broad', 'harness'].includes(scope) ? ['node ./scripts/agent-hardening/check-agent-hardening.mjs'] : [])
   ];
 
   const needsArchitecture = changedFiles.some((file) => (
@@ -106,8 +107,10 @@ function buildCommandSet(changedFiles) {
 async function main() {
   const options = parseArgs(process.argv.slice(2));
   const dryRun = asBoolean(options['dry-run'], false);
+  const scope = options.scope ?? 'broad';
+  if (!['broad', 'product', 'docs', 'harness'].includes(scope)) throw new Error(`Unknown fast scope: ${scope}`);
   const changedFiles = detectChangedFiles();
-  const commands = buildCommandSet(changedFiles);
+  const commands = buildCommandSet(changedFiles, scope);
 
   console.log(`[verify-fast] running ${commands.length} command(s).`);
   for (const command of commands) {

@@ -2,30 +2,19 @@ name: ci
 
 on:
   pull_request:
-    branches:
-      - dev
-      - main
-    types:
-      - opened
-      - synchronize
-      - reopened
-      - edited
-      - ready_for_review
+    branches: [dev, main]
+    types: [opened, synchronize, reopened, edited, ready_for_review]
   push:
-    branches:
-      - dev
-      - main
-      - 'slice/**'
-      - 'fix/**'
+    branches: [dev, main]
   merge_group:
-    branches:
-      - main
+    branches: [main]
 
 permissions:
   contents: read
 
+# Metadata must not cancel an in-flight code check for the same PR.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name == 'pull_request' && (github.event.action == 'edited' || github.event.action == 'ready_for_review') && !github.event.changes.base && 'metadata' || 'code' }}
   cancel-in-progress: true
 
 env:
@@ -35,61 +24,74 @@ env:
   PACKAGE_MANAGER_LOCKFILE: "{{PACKAGE_MANAGER_LOCKFILE}}"
 
 jobs:
-  fast-gate:
-    name: Fast Gate
+  scope:
+    name: PR Contract
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-
+    timeout-minutes: 5
+    outputs:
+      scope: ${{ steps.scope.outputs.scope }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-      - run: corepack enable
-      - run: ${{ env.CI_INSTALL_COMMAND }}
-      - run: npm run eval:refresh && git diff --exit-code -- docs/generated/evals-report.json
       - run: npm run pr:verify
         if: github.event_name == 'pull_request'
-      - run: npm run plans:verify:closeout
-      - run: npm run verify:fast
+      - id: scope
+        run: node scripts/ci/classify-change.mjs
 
-  full-gate:
-    name: Full Gate
-    if: >-
-      (github.event_name == 'pull_request' && contains(fromJSON('["dev","main"]'), github.base_ref)) ||
-      (github.event_name == 'push' && contains(fromJSON('["refs/heads/dev","refs/heads/main"]'), github.ref)) ||
-      github.event_name == 'merge_group'
+  fast-gate:
+    # Metadata uses different names: it must never replace code-check evidence.
+    name: ${{ github.event_name == 'pull_request' && (github.event.action == 'edited' || github.event.action == 'ready_for_review') && !github.event.changes.base && 'Metadata Only' || 'Fast Gate' }}
+    needs: scope
+    if: always()
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-
+    timeout-minutes: 30
     steps:
+      - name: Require a valid scope and contract
+        env:
+          RESULT: ${{ needs.scope.result }}
+          SCOPE: ${{ needs.scope.outputs.scope }}
+        run: |
+          test "$RESULT" = success
+          case "$SCOPE" in metadata|docs|product|harness|broad|full) ;; *) exit 1 ;; esac
       - uses: actions/checkout@v4
+        if: needs.scope.outputs.scope != 'metadata'
         with:
           fetch-depth: 0
-
       - uses: actions/setup-node@v4
+        if: needs.scope.outputs.scope != 'metadata'
         with:
           node-version: ${{ env.NODE_VERSION }}
       - run: corepack enable
+        if: needs.scope.outputs.scope != 'metadata'
       - run: ${{ env.CI_INSTALL_COMMAND }}
-      - run: npm run verify:full
+        if: needs.scope.outputs.scope != 'metadata'
+      - run: npm run eval:refresh && git diff --exit-code -- docs/generated/evals-report.json
+        if: needs.scope.outputs.scope != 'metadata'
+      - name: Focused fast validation
+        if: needs.scope.outputs.scope != 'metadata'
+        env:
+          SCOPE: ${{ needs.scope.outputs.scope }}
+        run: |
+          if [ "$SCOPE" = full ] || { [ "$GITHUB_EVENT_NAME" = pull_request ] && [ "$SCOPE" = harness ]; }; then SCOPE=broad; fi
+          npm run verify:fast -- --scope "$SCOPE"
+      - run: npm run verify:full -- --skip-fast
+        if: needs.scope.outputs.scope == 'full' || (github.event_name == 'pull_request' && (needs.scope.outputs.scope == 'broad' || needs.scope.outputs.scope == 'harness'))
 
   release-candidate-gate:
-    name: Release Candidate Gate
+    name: ${{ github.event_name == 'pull_request' && (github.event.action == 'edited' || github.event.action == 'ready_for_review') && !github.event.changes.base && 'Metadata Release (not evidence)' || 'Release Candidate Gate' }}
     if: >-
-      (github.event_name == 'pull_request' && github.base_ref == 'main') ||
-      github.event_name == 'merge_group'
+      !((github.event.action == 'edited' || github.event.action == 'ready_for_review') && !github.event.changes.base) &&
+      ((github.event_name == 'pull_request' && github.base_ref == 'main') || github.event_name == 'merge_group')
     runs-on: ubuntu-latest
     timeout-minutes: 15
-
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -105,3 +107,22 @@ jobs:
         run: npm run release:verify -- --allow-any-branch
         env:
           RELEASE_BASE_REF: origin/main
+
+  full-gate:
+    name: ${{ github.event_name == 'pull_request' && (github.event.action == 'edited' || github.event.action == 'ready_for_review') && !github.event.changes.base && 'Metadata Result' || 'Full Gate' }}
+    needs: [scope, fast-gate, release-candidate-gate]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require all selected checks to succeed
+        env:
+          SCOPE_RESULT: ${{ needs.scope.result }}
+          FAST_RESULT: ${{ needs.fast-gate.result }}
+          RELEASE_RESULT: ${{ needs.release-candidate-gate.result }}
+          RELEASE_REQUIRED: ${{ needs.scope.outputs.scope == 'full' && (github.event_name == 'pull_request' || github.event_name == 'merge_group') }}
+        run: |
+          test "$SCOPE_RESULT" = success
+          test "$FAST_RESULT" = success
+          if [ "$RELEASE_REQUIRED" = true ]; then test "$RELEASE_RESULT" = success; fi
+          echo 'Selected CI scope passed; only ci-candidate evidence authorizes a deployment candidate.'
