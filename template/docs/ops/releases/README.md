@@ -40,7 +40,8 @@ A merged release PR creates two annotated tags in one atomic push:
 - `source-vYYYY.MM.DD.N`: the original release head.
 
 The workflow validates the date, positive release sequence, and PR title before it creates tags.
-It refuses existing tag names. Merge commits, squash, and rebase do not require different tag conventions.
+Reruns reuse annotated tags only when their commit identities match. Conflicting tags stop the workflow.
+Merge commits, squash, and rebase do not require different tag conventions.
 A tag records a revision, not deployment success.
 
 Release PR verification reads the exact PR head. Release notes and verification prefer the previous source tag when one exists.
@@ -50,6 +51,21 @@ The merge queue verifies its proposed integration against `origin/main`.
 
 Staging, Preview, browser smoke checks, provider credentials, and deployment triggers are not mandatory blueprint features.
 Projects add applicable gates and evidence to their release contract. Multi-repository deployment coordination remains project-owned.
+
+## GitHub Releases and Notes
+
+After tagging, the same workflow creates a GitHub Release for `vYYYY.MM.DD.N`.
+It uses the existing notes generator and links the release PR. No additional release pipeline is required.
+The notes list completed slices, evidence, configuration changes, and migration files without unfinished template prompts.
+Validation results remain in the linked evidence. Publication does not prove successful deployment or runtime health.
+
+The generation range uses the last reachable release tag before the PR base and the exact original PR head.
+The existing source-tag boundary applies when available. The first release uses the PR base commit instead.
+Explicit boundaries prevent a retry from selecting its own new tag and generating empty notes.
+A generation failure stops before tagging. GitHub Release creation requires an existing verified tag.
+
+A retry can create a missing GitHub Release after successful tagging. It preserves existing GitHub Release notes, including manual edits.
+This workflow does not backfill historical releases. Operators retain control over user-facing wording and rollback guidance in the release PR.
 
 ## Release Mapping File
 

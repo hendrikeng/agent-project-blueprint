@@ -403,7 +403,7 @@ export function analyzeReleaseRange(argv = process.argv.slice(2)) {
 
 export function renderReleaseNotes(report) {
   const lines = [];
-  lines.push("# Release Notes Draft");
+  lines.push("# Release Notes");
   lines.push("");
   lines.push(`Base: \`${report.base}\``);
   lines.push(`Head: \`${report.head}\``);
@@ -415,14 +415,10 @@ export function renderReleaseNotes(report) {
     for (const warning of report.warnings) lines.push(`- ${warning}`);
     lines.push("");
   }
-  lines.push("## User-Visible Changes");
-  lines.push("");
-  lines.push("- Review included slices below and promote user-facing bullets here.");
-  lines.push("");
   lines.push("## Operator-Visible Changes");
   lines.push("");
   if (report.configFiles.length > 0) {
-    for (const filePath of report.configFiles) lines.push(`- Review configuration or workflow change: \`${filePath}\``);
+    for (const filePath of report.configFiles) lines.push(`- Changed configuration or workflow: \`${filePath}\``);
   } else {
     lines.push("- none identified automatically");
   }
@@ -441,7 +437,7 @@ export function renderReleaseNotes(report) {
   lines.push("## Database, Migration, And Data Notes");
   lines.push("");
   if (report.migrationFiles.length > 0) {
-    for (const filePath of report.migrationFiles) lines.push(`- Review database-related change: \`${filePath}\``);
+    for (const filePath of report.migrationFiles) lines.push(`- Changed database-related file: \`${filePath}\``);
   } else {
     lines.push("- none identified automatically");
   }
@@ -465,13 +461,11 @@ export function renderReleaseNotes(report) {
   lines.push("");
   lines.push("## Validation");
   lines.push("");
-  lines.push("- `npm run release:verify -- --base <previous-tag>`");
-  lines.push("- `npm run verify:full`");
-  lines.push("- `npm run verify:deploy`");
+  lines.push("See the included evidence indexes for validation results. Release publication does not verify deployment health.");
   lines.push("");
   lines.push("## Rollback Or Fix-Forward Notes");
   lines.push("");
-  lines.push("- Fill manually before marking the release PR ready.");
+  lines.push("See the release PR and included plan evidence for rollback or fix-forward guidance.");
   return `${lines.join("\n")}\n`;
 }
 

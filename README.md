@@ -32,7 +32,7 @@ Reusable blueprint for bootstrapping high-quality agent-assisted software projec
 
 The blueprint assumes two long-lived branches: `dev` and `main`.
 Slice and fix PRs enter `dev`. Release PRs use `release/YYYY.MM.DD.N` and target `main`.
-CI validates integration and release candidates. A merged release creates both a landed tag and a source tag, without deploying services.
+CI validates integration and release candidates. A merged release creates landed and source tags, plus a GitHub Release with generated notes, without deploying services.
 Staging, Preview, provider integration, and cross-repository deployment coordination remain project-specific.
 The [release contract](template/docs/ops/releases/README.md) defines the defaults.
 

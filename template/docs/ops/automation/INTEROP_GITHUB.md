@@ -18,7 +18,7 @@ Canonical policy still lives in repository docs.
 - CODEOWNERS should route security, identity, payment, migration, and governance-sensitive paths to appropriate owners.
 - GitHub Actions should call repository scripts rather than duplicating policy in workflow YAML.
 - The generic `ci` workflow calls `pr:verify`, `plans:verify:closeout`, `verify:fast`, `verify:full`, and `release:verify`; add service-specific preview/deploy workflows only after documenting them in ops docs.
-- The generic release-tag workflow tags merged `release/YYYY.MM.DD.N` PRs into `main` as `vYYYY.MM.DD.N`.
+- The generic release-tag workflow tags merged `release/YYYY.MM.DD.N` PRs into `main` as `vYYYY.MM.DD.N` and creates a GitHub Release with generated notes.
 
 ## Branch And PR Lanes
 

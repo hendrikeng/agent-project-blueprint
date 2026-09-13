@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   tag-release:
-    name: Tag Release
+    name: Publish Release
     if: >-
       github.event.pull_request.merged == true &&
       startsWith(github.event.pull_request.head.ref, 'release/')
@@ -62,7 +62,24 @@ jobs:
           ref: ${{ github.event.pull_request.merge_commit_sha }}
           fetch-depth: 0
 
-      - name: Create annotated release tag
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "{{NODE_VERSION}}"
+
+      - name: Generate release notes
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+          RELEASE_PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$SOURCE_SHA"
+          base="$(git describe --tags --match 'v[0-9][0-9][0-9][0-9].[0-9][0-9].[0-9][0-9].[0-9]*' --abbrev=0 "$BASE_SHA" 2>/dev/null || printf '%s' "$BASE_SHA")"
+          node scripts/automation/release-notes.mjs --base "$base" --head "$SOURCE_SHA" > "$RUNNER_TEMP/release-notes.md"
+          printf '\nRelease PR: %s\n' "$RELEASE_PR_URL" >> "$RUNNER_TEMP/release-notes.md"
+
+      - name: Create or verify annotated release tags
         shell: bash
         env:
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
@@ -78,17 +95,37 @@ jobs:
           merge_sha="$MERGE_SHA"
           source_sha="$SOURCE_SHA"
 
-          for candidate in "$tag" "$source_tag"; do
-            if git ls-remote --exit-code --tags origin "refs/tags/$candidate" >/dev/null 2>&1; then
-              echo "Tag already exists: $candidate" >&2
-              exit 1
-            fi
-          done
-          git fetch --no-tags origin "$source_sha"
-
+          git fetch --tags origin
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git tag -a "$tag" "$merge_sha" -m "Release $version" -m "Source-Tag: $source_tag"
-          git tag -a "$source_tag" "$source_sha" -m "Release $version source boundary"
+          for candidate in "$tag" "$source_tag"; do
+            expected="$merge_sha"
+            if [[ "$candidate" == "$source_tag" ]]; then expected="$source_sha"; fi
+            if git show-ref --verify --quiet "refs/tags/$candidate"; then
+              if [[ "$(git cat-file -t "refs/tags/$candidate")" != tag || "$(git rev-parse "$candidate^{commit}")" != "$expected" ]]; then
+                echo "Tag is not annotated or points to a different commit: $candidate" >&2
+                exit 1
+              fi
+            elif [[ "$candidate" == "$tag" ]]; then
+              git tag -a "$tag" "$merge_sha" -m "Release $version" -m "Source-Tag: $source_tag"
+            else
+              git tag -a "$source_tag" "$source_sha" -m "Release $version source boundary"
+            fi
+          done
           git push --atomic origin "refs/tags/$tag" "refs/tags/$source_tag"
+
+      - name: Create GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release already exists; preserving its notes: $RELEASE_TAG"
+          else
+            gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --verify-tag \
+              --title "Release $RELEASE_VERSION" --notes-file "$RUNNER_TEMP/release-notes.md"
+          fi
