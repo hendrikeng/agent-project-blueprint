@@ -59,12 +59,13 @@ It uses the existing notes generator and links the release PR. No additional rel
 The notes list completed slices, evidence, configuration changes, and migration files without unfinished template prompts.
 Validation results remain in the linked evidence. Publication does not prove successful deployment or runtime health.
 
-The generation range uses the last reachable release tag before the PR base and the exact original PR head.
-The existing source-tag boundary applies when available. The first release uses the PR base commit instead.
-Explicit boundaries prevent a retry from selecting its own new tag and generating empty notes.
+The workflow derives the landed predecessor from the merged release commits and uses its canonical release tag with the exact original PR head.
+The source-tag boundary applies when available. The first release uses the landed predecessor commit instead.
+If the predecessor belongs to an unpublished release, publication stops for a safe retry after the earlier release.
 A generation failure stops before tagging. GitHub Release creation requires an existing verified tag.
 
-A retry can create a missing GitHub Release after successful tagging. It preserves existing GitHub Release notes, including manual edits.
+A retry can create a missing GitHub Release after successful tagging. It preserves existing published release notes, including manual edits.
+The workflow serializes release jobs. An existing draft or prerelease stops publication.
 This workflow does not backfill historical releases. Operators retain control over user-facing wording and rollback guidance in the release PR.
 
 ## Release Mapping File

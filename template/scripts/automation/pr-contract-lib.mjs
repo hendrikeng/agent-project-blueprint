@@ -2,11 +2,15 @@ import { readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { isValidReleaseVersion } from "./release-support-lib.mjs";
 
+const RELEASE_COMMAND_FIELDS = [
+  ["- Release notes generated:", "release:notes"],
+  ["- Release completeness verified:", "release:verify"],
+];
+
 const RELEASE_CONTRACT_MARKERS = [
   "## Release Contract",
   "- Release ID:",
-  "- Release notes generated: `npm run release:notes`",
-  "- Release completeness verified: `npm run release:verify`",
+  ...RELEASE_COMMAND_FIELDS.map(([label]) => label),
   "- Required release gates passed: Fast Gate / Full Gate / Release Candidate Gate",
 ];
 
@@ -53,6 +57,15 @@ function missingMarkers(body, markers) {
   return markers.filter((marker) => !normalized.includes(marker));
 }
 
+function invalidReleaseCommandFields(body) {
+  const lines = normalizeText(body).split("\n").map((line) => line.trim());
+  return RELEASE_COMMAND_FIELDS.filter(([label, script]) => {
+    const line = lines.find((candidate) => candidate.startsWith(label));
+    const command = line?.slice(label.length).trim().replace(/^`|`$/g, "") ?? "";
+    return !new RegExp(`^(?:npm run|pnpm(?: run)?|yarn(?: run)?|bun run) ${script}$`).test(command);
+  });
+}
+
 function branchClass(headRef) {
   if (headRef.startsWith("release/")) return "release";
   if (headRef.startsWith("slice/")) return "slice";
@@ -90,6 +103,9 @@ export function validatePrContract({ headRef, baseRef, title, body }) {
     const missing = missingMarkers(normalizedBody, RELEASE_CONTRACT_MARKERS);
     for (const marker of missing) {
       findings.push(`release PR body is missing required marker: ${marker}`);
+    }
+    for (const [label, script] of invalidReleaseCommandFields(normalizedBody)) {
+      findings.push(`release PR body field '${label}' must reference ${script}.`);
     }
 
     return findings;
