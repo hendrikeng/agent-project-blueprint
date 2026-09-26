@@ -23,7 +23,7 @@ test('verify-fast scopes product and docs without weakening strict eval verifica
     const result = runNode(script, ['--dry-run', '--scope', scope], rootDir);
     assert.equal(result.status, 0, String(result.stderr));
     const output = String(result.stdout);
-    for (const check of ['check-evals', 'check-governance', 'check-plan-closeout', 'check-quality-score', 'check-harness-alignment']) assert.ok(output.includes(check), check);
+    for (const check of ['eval:verify', 'check-governance', 'check-plan-closeout', 'check-quality-score', 'check-harness-alignment']) assert.ok(output.includes(check), check);
     assert.equal(output.includes('npm run harness:test'), ['harness', 'broad'].includes(scope));
     assert.equal(output.includes('--profile fast --run'), ['product', 'broad'].includes(scope));
     assert.equal(output.includes('check-agent-hardening'), ['harness', 'broad'].includes(scope));

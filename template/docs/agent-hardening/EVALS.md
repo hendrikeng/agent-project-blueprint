@@ -50,7 +50,7 @@ Source of Truth: This document.
 - Generated report artifact: `docs/generated/evals-report.json`.
 - Refresh command: `npm run eval:refresh`. This command does not run evaluations.
 - New reports start with `status: not-run` and zero results. Bootstrap cannot convert these defaults into a passing run.
-- Verifier command: `npm run eval:verify`.
+- Verifier and agent activation command: `npm run eval:verify`.
 - Required report fields:
   - `status`: `pass` only after the required suites complete successfully
   - `generatedAtUtc` (provenance only in content-addressed mode)

@@ -115,6 +115,11 @@ function validateScripts(scriptMap, filePath) {
       addFinding('SCRIPT_MISMATCH', `Script '${scriptName}' must be '${expected}'.`, filePath);
     }
   }
+  for (const scriptName of Object.keys(scriptMap ?? {})) {
+    if (scriptName.startsWith('verify:') && !['verify:fast', 'verify:full', 'verify:deploy'].includes(scriptName)) {
+      addFinding('UNSUPPORTED_SCRIPT', `Script '${scriptName}' is not part of the blueprint package contract.`, filePath);
+    }
+  }
 }
 
 async function main() {

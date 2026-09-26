@@ -5,11 +5,11 @@ import path from 'node:path';
 
 import { createTemplateRepo, runNode } from './test-helpers.mjs';
 
-test('harness:verify fails when a required package script drifts', async () => {
+test('harness:verify rejects unsupported verification profiles', async () => {
   const rootDir = await createTemplateRepo();
   const packageJsonPath = path.join(rootDir, 'package.json');
   const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf8'));
-  packageJson.scripts['verify:fast'] = 'node ./scripts/docs/check-governance.mjs';
+  packageJson.scripts['verify:legacy'] = packageJson.scripts['verify:fast'];
   await fs.writeFile(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`, 'utf8');
 
   const result = runNode(
@@ -19,8 +19,8 @@ test('harness:verify fails when a required package script drifts', async () => {
   );
 
   assert.equal(result.status, 1);
-  assert.match(String(result.stderr), /SCRIPT_MISMATCH/);
-  assert.match(String(result.stderr), /verify:fast/);
+  assert.match(String(result.stderr), /UNSUPPORTED_SCRIPT/);
+  assert.match(String(result.stderr), /verify:legacy/);
 });
 
 test('harness:verify fails when a CI-invoked package script is missing', async () => {

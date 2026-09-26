@@ -82,7 +82,7 @@ function buildCommandSet(changedFiles, scope) {
     'node ./scripts/automation/check-path-policy.mjs',
     'node ./scripts/docs/repair-plan-references.mjs --check',
     'node ./scripts/docs/check-governance.mjs',
-    'node ./scripts/agent-hardening/check-evals.mjs',
+    'npm run eval:verify',
     ...(['broad', 'harness'].includes(scope) ? ['npm run harness:test'] : []),
     resolvedPlanMetadataCommand(),
     'node ./scripts/automation/check-plan-closeout.mjs',

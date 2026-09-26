@@ -55,7 +55,7 @@ Canonical entrypoints:
 
 ## Verification Profiles
 
-- fast: npm run context:compile ; npm run docs:verify ; npm run architecture:verify ; npm run agent:verify ; npm run plans:verify ; npm run harness:verify ; npm run project:gates:fast
+- fast: npm run context:compile ; npm run docs:verify ; npm run architecture:verify ; npm run agent:verify ; npm run eval:verify ; npm run plans:verify ; npm run harness:verify ; npm run project:gates:fast
 - full: npm run verify:fast ; npm run project:gates:full ; project-specific typecheck/build/test gates
 - repo health: project-specific lint/build/test commands
 

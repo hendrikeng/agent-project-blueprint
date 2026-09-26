@@ -76,8 +76,8 @@ Use `docs/MANIFEST.md` for the complete first-class documentation inventory.
 - Docs governance: `npm run docs:verify`
 - Architecture rules: `npm run architecture:verify`
 - Agent policy checks: `npm run agent:verify`
+- Agent activation and eval checks: `npm run eval:verify`
 - Eval report refresh: `npm run eval:refresh`
-- Eval report checks: `npm run eval:verify`
 - Harness regression tests: `npm run harness:test`
 - Project gate declaration: `npm run project:gates:verify`
 - Plan metadata verification: `npm run plans:verify`

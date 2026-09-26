@@ -64,8 +64,10 @@ Source of Truth: This document.
 - Every adopted project must declare real lint, typecheck, unit-test, and build gates or fail bootstrap verification.
 - Optional gates such as integration tests, migration integrity, browser smoke, security audit, release verification, and deployment verification must be either wired to a real command or marked `deferred`/`not-applicable` with a concrete rationale.
 - Gate commands must call the real project toolchain; no no-op commands, recursive aggregate commands, or unresolved placeholders.
+- `verify:fast` and `verify:full` are the standard verification profiles. Projects can add `verify:deploy` for checks against a deployed target.
 - Standalone `verify:fast` runs broad fast verification. CI can select explicit product, docs, or harness scopes while retaining mandatory safety checks.
 - `verify:full` includes broad fast verification and all full project gates. CI can skip fast only after successful broad fast verification.
+- `project:gates:*` commands are internal gate commands, not additional verification profiles.
 - Full CI runs for broad or harness PRs, exact selected candidates, and main/release boundaries, not on ordinary dev pushes.
 - Project-owned classifiers must keep unknown, deleted, shared-configuration, and sensitive changes broad.
 - Metadata-only checks cannot replace code evidence. Base edits require code validation again.

@@ -146,8 +146,10 @@ Docs are part of done.
 ## Test and Validation Expectations
 
 - Runtime context generation: `npm run context:compile`.
-- Agent loop contract: `npm run agent:loop`.
-- Eval report integrity: `npm run eval:refresh` and `npm run eval:verify`.
+- Agent loop process: `docs/agent-hardening/AGENT_LOOP.md`.
+- Agent loop contract verifier: `npm run agent:verify`.
+- Agent readiness boundary and eval verifier: `npm run eval:verify`.
+- Eval report refresh: `npm run eval:refresh`.
 - Harness regression tests: `npm run harness:test`.
 - Project gate declaration: `npm run project:gates:verify`.
 - Iteration profile: `npm run verify:fast`.
