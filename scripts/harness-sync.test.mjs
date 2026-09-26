@@ -59,6 +59,9 @@ test('harness-sync install writes target files and downstream manifest', async (
   assert.equal(manifest.sourceManifestSha256.length, 64);
   assert.equal(manifest.governedPlaceholders.includes('PRODUCT'), true);
   assert.equal(manifest.governedPlaceholders.includes('EMAIL'), false);
+  const retiredCopiedInventory = 'scripts/agent-hardening/check-agent-hardening.test.mjs';
+  assert.equal(manifest.managedFiles.some((entry) => entry.targetPath === retiredCopiedInventory), false);
+  await assert.rejects(fs.access(path.join(targetDir, retiredCopiedInventory)), { code: 'ENOENT' });
   for (const relative of bootstrapOnlyPaths) {
     assert.equal(manifest.managedFiles.some((entry) => entry.targetPath === relative), false);
     await fs.access(path.join(targetDir, relative));
@@ -332,15 +335,16 @@ test('harness-sync update removes managed files no longer present in the source 
   assert.equal(run(['install', '--target', targetDir]).status, 0);
   await configure(targetDir);
 
-  const removedPath = path.join(targetDir, 'docs', 'obsolete-managed-file.txt');
+  const retiredPath = 'scripts/agent-hardening/check-agent-hardening.test.mjs';
+  const removedPath = path.join(targetDir, retiredPath);
   await fs.mkdir(path.dirname(removedPath), { recursive: true });
   await fs.writeFile(removedPath, 'stale\n', 'utf8');
 
   const manifestPath = path.join(targetDir, 'docs', 'ops', 'automation', 'harness-manifest.json');
   const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
   manifest.managedFiles.push({
-    targetPath: 'docs/obsolete-managed-file.txt',
-    sourcePath: 'template/docs/obsolete-managed-file.txt',
+    targetPath: retiredPath,
+    sourcePath: `template/${retiredPath}`,
     sha256: createHash('sha256').update('stale\n').digest('hex'),
     configuredSha256: createHash('sha256').update('stale\n').digest('hex'),
     size: 6
@@ -350,7 +354,7 @@ test('harness-sync update removes managed files no longer present in the source 
   await fs.writeFile(removedPath, 'local edit\n');
   const conflict = run(['update', '--target', targetDir]);
   assert.equal(conflict.status, 1);
-  assert.match(String(conflict.stderr), /MODIFIED_MANAGED_FILES.*obsolete-managed-file/);
+  assert.match(String(conflict.stderr), /MODIFIED_MANAGED_FILES.*check-agent-hardening/);
   assert.equal(await fs.readFile(removedPath, 'utf8'), 'local edit\n');
   await fs.rm(removedPath);
 
