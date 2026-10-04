@@ -6,7 +6,7 @@ import { pathToFileURL } from 'node:url';
 
 export function metadataOnly(eventName, event) {
   return eventName === 'pull_request' &&
-    ['edited', 'ready_for_review'].includes(event.action) && !event.changes?.base;
+    event.action === 'edited' && !event.changes?.base;
 }
 
 export function classifyChanges(entries) {

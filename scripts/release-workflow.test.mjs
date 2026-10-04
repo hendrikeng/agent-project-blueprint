@@ -17,12 +17,55 @@ test('default CI retains required aggregates, contract, and release coverage', (
     assert.ok(ci.includes(`|| '${name}'`), `Metadata must not replace ${name}`);
   }
   assert.match(ci, /name: PR Contract/);
-  assert.match(ci, /needs: \[scope, fast-gate, release-candidate-gate\]\s+if: always\(\)/);
+  assert.match(ci, /needs: \[scope, fast-gate, release-candidate-gate\]\s+if: >-\s+always\(\)/);
   for (const result of ['SCOPE_RESULT', 'FAST_RESULT', 'RELEASE_RESULT']) assert.ok(ci.includes(`test "$${result}" = success`));
   assert.match(ci, /npm run verify:full -- --skip-fast\s+if: needs.scope.outputs.scope == 'full'/);
   assert.match(ci, /RELEASE_HEAD_REF: \$\{\{ github.event.pull_request.head.sha \}\}/);
   assert.match(ci, /npm run release:verify -- --allow-any-branch/);
   assert.doesNotMatch(ci, /staging|preview|environment:|railway|wrangler/i);
+});
+
+test('PR metadata skips gate runners without replacing or canceling real validation', () => {
+  const ci = workflow('ci');
+  const evaluate = (expression, github) => new Function('github', 'always', `return (${expression})`)(github, () => true);
+  const group = (github) => ci.match(/^  group: (.+)$/m)[1]
+    .replace(/\$\{\{ (.+?) \}\}/g, (_, expression) => evaluate(expression, github));
+  const jobs = ['fast-gate', 'full-gate', 'release-candidate-gate'].map((id) => {
+    const block = ci.split(`  ${id}:\n`)[1].split(/\n  [\w-]+:\n/)[0];
+    const condition = block.match(/^    if: >-\n((?:      [^\n]+\n)+)/m)?.[1].trim() ?? block.match(/^    if: (.+)$/m)[1];
+    return { id, condition, name: block.match(/^    name: \$\{\{ (.+) \}\}$/m)[1] };
+  });
+  const requiredNames = ['Fast Gate', 'Full Gate', 'Release Candidate Gate'];
+  for (const base of ['dev', 'main']) {
+    const real = { event_name: 'pull_request', workflow: 'ci', ref: 'refs/pull/7/merge',
+      event: { action: 'synchronize', changes: {}, pull_request: { number: 7 } }, base_ref: base };
+    for (const [action, changes, metadata] of [
+      ['edited', { title: { from: 'old title' } }, true],
+      ['edited', { body: { from: 'old body' } }, true],
+      ['edited', {}, true],
+      ['edited', { base: { ref: { from: 'other' } } }, false],
+      ['edited', { base: {}, body: { from: 'old body' } }, false],
+      ['opened', {}, false], ['synchronize', {}, false], ['reopened', {}, false],
+      ['ready_for_review', {}, false]
+    ]) {
+      const github = { ...real, event: { ...real.event, action, changes } };
+      const label = `${base}: ${action} ${JSON.stringify(changes)}`;
+      assert.equal(group(github) === group(real), !metadata, `${label}: cancellation group`);
+      for (const { id, condition, name } of jobs) {
+        assert.equal(evaluate(condition, github), !metadata && (id !== 'release-candidate-gate' || base === 'main'), `${label}: ${id} scheduling`);
+        const checkName = evaluate(name, github);
+        if (metadata) assert.ok(!requiredNames.includes(checkName), `${label}: skipped job must not replace required evidence`);
+        else assert.equal(checkName, requiredNames[['fast-gate', 'full-gate', 'release-candidate-gate'].indexOf(id)]);
+      }
+    }
+  }
+  for (const event_name of ['push', 'merge_group']) {
+    const github = { event_name, workflow: 'ci', ref: 'refs/heads/main', event: { changes: {} } };
+    for (const { id, condition, name } of jobs) {
+      assert.equal(evaluate(condition, github), id !== 'release-candidate-gate' || event_name === 'merge_group');
+      assert.ok(requiredNames.includes(evaluate(name, github)));
+    }
+  }
 });
 
 test('risk PRs run full after broad fast, without requiring release checks or widening dev pushes', () => {

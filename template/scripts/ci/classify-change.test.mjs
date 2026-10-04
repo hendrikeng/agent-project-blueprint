@@ -20,10 +20,13 @@ test('explicit categories narrow only recognized non-sensitive changes', () => {
 });
 
 test('metadata preserves old code evidence; base edits and release boundaries revalidate', () => {
-  for (const action of ['edited', 'ready_for_review']) {
-    assert.equal(metadataOnly('pull_request', { action }), true);
-    assert.equal(selectScope('pull_request', { action }, []), 'metadata');
-    assert.equal(metadataOnly('pull_request', { action, changes: { base: {} } }), false);
+  assert.equal(metadataOnly('pull_request', { action: 'edited', changes: { body: { from: 'old' } } }), true);
+  assert.equal(selectScope('pull_request', { action: 'edited' }, []), 'metadata');
+  assert.equal(metadataOnly('pull_request', { action: 'edited', changes: { base: {} } }), false);
+  for (const action of ['opened', 'synchronize', 'reopened', 'ready_for_review']) {
+    assert.equal(metadataOnly('pull_request', { action }), false);
+    assert.equal(selectScope('pull_request', { action, pull_request: { base: { ref: 'dev' } } }, [change('src/card.ts')]), 'product');
+    assert.equal(selectScope('pull_request', { action, pull_request: { base: { ref: 'main' } } }, []), 'full');
   }
   const pr = { action: 'edited', changes: { base: {} }, pull_request: { base: { ref: 'main' } } };
   assert.equal(selectScope('pull_request', pr, []), 'full');

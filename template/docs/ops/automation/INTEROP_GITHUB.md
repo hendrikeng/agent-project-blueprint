@@ -45,8 +45,8 @@ Standalone `npm run verify:full` includes broad fast verification. CI uses `--sk
 Strict eval and agent checks belong to fast verification, so full verification does not repeat them.
 Full Gate aggregates the selected checks and rejects failed, skipped, or canceled required jobs. Its compatibility name does not imply full-suite execution on every PR.
 
-PR edits and ready-for-review events run `PR Contract` without suites. Metadata jobs use different names and cannot replace code-check evidence.
-Missing code evidence remains missing. Base edits run code validation again. Metadata cancellation groups cannot cancel code runs.
+PR edits without base changes run only `PR Contract`. Gate jobs are skipped under metadata-only names, so they cannot replace failed or missing code-check evidence.
+Base edits and ready-for-review events run code validation again. Metadata cancellation groups cannot cancel code runs.
 PRs to `main` and merge groups retain release checks. Cache placeholders remain unused.
 
 ### Selected Candidate Proof

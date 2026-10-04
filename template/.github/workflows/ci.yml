@@ -14,7 +14,7 @@ permissions:
 
 # Metadata must not cancel an in-flight code check for the same PR.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name == 'pull_request' && (github.event.action == 'edited' || github.event.action == 'ready_for_review') && !github.event.changes.base && 'metadata' || 'code' }}
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name == 'pull_request' && github.event.action == 'edited' && !github.event.changes.base && 'metadata' || 'code' }}
   cancel-in-progress: true
 
 env:
@@ -44,9 +44,10 @@ jobs:
 
   fast-gate:
     # Metadata uses different names: it must never replace code-check evidence.
-    name: ${{ github.event_name == 'pull_request' && (github.event.action == 'edited' || github.event.action == 'ready_for_review') && !github.event.changes.base && 'Metadata Only' || 'Fast Gate' }}
+    name: ${{ github.event_name == 'pull_request' && github.event.action == 'edited' && !github.event.changes.base && 'Metadata Only' || 'Fast Gate' }}
     needs: scope
-    if: always()
+    if: >-
+      always() && !(github.event_name == 'pull_request' && github.event.action == 'edited' && !github.event.changes.base)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -82,9 +83,9 @@ jobs:
         if: needs.scope.outputs.scope == 'full' || (github.event_name == 'pull_request' && (needs.scope.outputs.scope == 'broad' || needs.scope.outputs.scope == 'harness'))
 
   release-candidate-gate:
-    name: ${{ github.event_name == 'pull_request' && (github.event.action == 'edited' || github.event.action == 'ready_for_review') && !github.event.changes.base && 'Metadata Release (not evidence)' || 'Release Candidate Gate' }}
+    name: ${{ github.event_name == 'pull_request' && github.event.action == 'edited' && !github.event.changes.base && 'Metadata Release (not evidence)' || 'Release Candidate Gate' }}
     if: >-
-      !((github.event.action == 'edited' || github.event.action == 'ready_for_review') && !github.event.changes.base) &&
+      !(github.event_name == 'pull_request' && github.event.action == 'edited' && !github.event.changes.base) &&
       ((github.event_name == 'pull_request' && github.base_ref == 'main') || github.event_name == 'merge_group')
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -109,9 +110,10 @@ jobs:
           RELEASE_BASE_REF: origin/main
 
   full-gate:
-    name: ${{ github.event_name == 'pull_request' && (github.event.action == 'edited' || github.event.action == 'ready_for_review') && !github.event.changes.base && 'Metadata Result' || 'Full Gate' }}
+    name: ${{ github.event_name == 'pull_request' && github.event.action == 'edited' && !github.event.changes.base && 'Metadata Result' || 'Full Gate' }}
     needs: [scope, fast-gate, release-candidate-gate]
-    if: always()
+    if: >-
+      always() && !(github.event_name == 'pull_request' && github.event.action == 'edited' && !github.event.changes.base)
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
