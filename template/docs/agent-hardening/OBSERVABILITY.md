@@ -19,5 +19,10 @@ Record the smallest reproduction and unfinished requirement. Passing checks do n
 
 ## Retention and Redaction
 
-Keep compact evidence with the plan. Link large artifacts instead of copying them.
+Keep compact text evidence with the plan: exact commands, observed outcomes, relevant commit references, and unresolved risks.
+Do not commit screenshots, images, videos, or other binary files as evidence, including embedded or base64-encoded media.
+Use temporary captures for visual checks. Record what you inspected and the result in text.
+If retained media is necessary, link an artifact in an existing approved external store. Do not create storage just for evidence.
+This restriction applies to evidence, not product assets or test fixtures required by the project.
+Link large output instead of copying it.
 Redact secrets and private data. Define retention before adding external trace storage.
