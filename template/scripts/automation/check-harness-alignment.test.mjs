@@ -5,11 +5,12 @@ import path from 'node:path';
 
 import { createTemplateRepo, runNode } from './test-helpers.mjs';
 
-test('harness:verify rejects unsupported verification profiles', async () => {
-  const rootDir = await createTemplateRepo();
+test('harness:verify preserves project verification scripts but validates blueprint-owned commands', async (t) => {
+  const rootDir = await createTemplateRepo(t);
   const packageJsonPath = path.join(rootDir, 'package.json');
   const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf8'));
-  packageJson.scripts['verify:legacy'] = packageJson.scripts['verify:fast'];
+  packageJson.scripts['verify:contracts'] = 'node ./scripts/check-contracts.mjs';
+  packageJson.scripts['verify:licenses'] = 'node ./scripts/check-licenses.mjs';
   await fs.writeFile(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`, 'utf8');
 
   const result = runNode(
@@ -18,13 +19,17 @@ test('harness:verify rejects unsupported verification profiles', async () => {
     rootDir
   );
 
-  assert.equal(result.status, 1);
-  assert.match(String(result.stderr), /UNSUPPORTED_SCRIPT/);
-  assert.match(String(result.stderr), /verify:legacy/);
+  assert.equal(result.status, 0, String(result.stderr));
+  assert.deepEqual(JSON.parse(await fs.readFile(packageJsonPath, 'utf8')), packageJson);
+  packageJson.scripts['verify:fast'] = 'node ./scripts/check-contracts.mjs';
+  await fs.writeFile(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`);
+  const drift = runNode(path.join(rootDir, 'scripts/automation/check-harness-alignment.mjs'), [], rootDir);
+  assert.equal(drift.status, 1);
+  assert.match(String(drift.stderr), /SCRIPT_MISMATCH.*verify:fast/);
 });
 
-test('harness:verify fails when a CI-invoked package script is missing', async () => {
-  const rootDir = await createTemplateRepo();
+test('harness:verify fails when a CI-invoked package script is missing', async (t) => {
+  const rootDir = await createTemplateRepo(t);
   const packageJsonPath = path.join(rootDir, 'package.json');
   const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf8'));
   delete packageJson.scripts['pr:verify'];
@@ -41,8 +46,8 @@ test('harness:verify fails when a CI-invoked package script is missing', async (
   assert.match(String(result.stderr), /pr:verify/);
 });
 
-test('harness:verify fails when plan closeout verification is missing', async () => {
-  const rootDir = await createTemplateRepo();
+test('harness:verify fails when plan closeout verification is missing', async (t) => {
+  const rootDir = await createTemplateRepo(t);
   const packageJsonPath = path.join(rootDir, 'package.json');
   const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf8'));
   delete packageJson.scripts['plans:verify:closeout'];
@@ -59,8 +64,8 @@ test('harness:verify fails when plan closeout verification is missing', async ()
   assert.match(String(result.stderr), /plans:verify:closeout/);
 });
 
-test('harness:verify fails when release verification is missing', async () => {
-  const rootDir = await createTemplateRepo();
+test('harness:verify fails when release verification is missing', async (t) => {
+  const rootDir = await createTemplateRepo(t);
   const packageJsonPath = path.join(rootDir, 'package.json');
   const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf8'));
   delete packageJson.scripts['release:verify'];
@@ -77,13 +82,13 @@ test('harness:verify fails when release verification is missing', async () => {
   assert.match(String(result.stderr), /release:verify/);
 });
 
-test('harness:verify fails when required quality guidance is missing', async () => {
-  const rootDir = await createTemplateRepo();
-  const qualityPath = path.join(rootDir, 'docs', 'QUALITY_SCORE.md');
+test('harness:verify fails when required domain section is missing', async (t) => {
+  const rootDir = await createTemplateRepo(t);
+  const qualityPath = path.join(rootDir, 'docs', 'SECURITY.md');
   const qualityDoc = await fs.readFile(qualityPath, 'utf8');
   await fs.writeFile(
     qualityPath,
-    qualityDoc.replace('A slice is high quality only when it clears all applicable gates', 'A slice is high quality when evidence is strong'),
+    qualityDoc.replace('## Security Review Checklist', '## Notes'),
     'utf8'
   );
 
@@ -95,11 +100,11 @@ test('harness:verify fails when required quality guidance is missing', async () 
 
   assert.equal(result.status, 1);
   assert.match(String(result.stderr), /MISSING_QUALITY_GUIDANCE/);
-  assert.match(String(result.stderr), /docs\/QUALITY_SCORE\.md/);
+  assert.match(String(result.stderr), /docs\/SECURITY\.md/);
 });
 
-test('harness:verify fails when policy execution mode drifts', async () => {
-  const rootDir = await createTemplateRepo();
+test('harness:verify fails when policy execution mode drifts', async (t) => {
+  const rootDir = await createTemplateRepo(t);
   const policyPath = path.join(rootDir, 'docs', 'governance', 'policy-manifest.json');
   const policy = JSON.parse(await fs.readFile(policyPath, 'utf8'));
   policy.executionModel.mode = 'custom-local-process';

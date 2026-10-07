@@ -5,12 +5,15 @@ Owner: {{DOC_OWNER}}
 Last Updated: {{LAST_UPDATED_ISO_DATE}}
 Source of Truth: This file plus `scripts/automation/release-support-lib.mjs`.
 
-This lowercase file is an operational ledger consumed by `scripts/automation/release-support-lib.mjs`, not a canonical policy doc. It is only for exceptional release-range commits that cannot be mapped from commit metadata, completed plans, or accepted small-fix rationale.
+This file is the operational ledger consumed by `scripts/automation/release-support-lib.mjs`.
+Every non-documentation implementation commit requires a `Plan-ID` for a completed plan in the release range or an explicit ledger entry.
+Plan-free code fixes require a `standard-change` entry with the commit hash and rationale.
+Ordinary PR or commit summaries do not supply machine-readable release mapping. Documentation-only commits do not require an entry.
 
 ## Rules
 
-- Prefer completed plan metadata and PR templates over manual mapping.
-- Use manual mapping only when a release candidate includes a commit that is otherwise valid but lacks machine-readable `Plan-ID` or accepted small-change metadata.
+- For planned work, use `Plan-ID` commit metadata or an explicit ledger entry for the completed plan.
+- For every plan-free implementation commit, add a `standard-change` ledger entry before release verification.
 - Planned slice mappings must point to completed plans included in the release range.
 - Standard-change mappings must stay limited to small, low-risk fixes or operational commits with explicit rationale.
 - Do not use this file to hide missing closeout, missing validation, or unresolved release risk.

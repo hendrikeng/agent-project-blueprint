@@ -200,6 +200,7 @@ async function verifyFailureFixture(requirement, suitesById) {
 }
 
 async function main() {
+  const integrityOnly = process.argv.includes('--integrity-only');
   const templateMode = await isTemplateMode();
   if (!(await exists(configPath))) {
     fail(`Missing config file: ${normalizePath(path.relative(rootDir, configPath))}`);
@@ -231,7 +232,7 @@ async function main() {
     fail('Eval report must be a JSON object.');
   }
 
-  if (!templateMode && report.status !== 'pass') {
+  if (!templateMode && report.status !== 'pass' && !(integrityOnly && report.status === 'not-run')) {
     fail('Eval report is not a completed passing run. Run the required suites and record execution evidence; eval:refresh does not run evaluations.');
   }
 
@@ -278,6 +279,27 @@ async function main() {
     }
   } else {
     fail(`Unsupported eval freshnessMode: ${freshnessMode}`);
+  }
+
+  // A passing claim always takes the strict evidence path, even in integrity mode.
+  if (integrityOnly && report.status === 'not-run') {
+    if (report.inputSha256 !== await computeEvalInputSha256(rootDir, config)) {
+      fail('Eval report inputSha256 does not match current policy and fixture inputs; refresh the unrun report.');
+    }
+    const requiredSuites = (config.requiredSuites ?? []).map(suiteRequirementEntry);
+    const suitesById = new Map(requiredSuites.map(suite => [suite.id, suite]));
+    for (const fixture of config.requiredFailureFixtures ?? []) {
+      await verifyFailureFixture(fixtureRequirementEntry(fixture), suitesById);
+    }
+    if (!report.summary || report.summary.total !== 0 || report.summary.passed !== 0 || report.summary.failed !== 0 || report.summary.passRate !== 0 ||
+        !Array.isArray(report.suites) || report.suites.length !== requiredSuites.length ||
+        new Set(report.suites.map(suite => suite.id)).size !== requiredSuites.length ||
+        report.suites.some(suite => !suitesById.has(suite.id) || suite.status !== 'not-run' || suite.total !== 0 || suite.passed !== 0 || suite.failed !== 0 || suite.execution) ||
+        !Array.isArray(report.evidence) || report.evidence.length !== 0) {
+      fail('Unrun eval report must contain zero results and no execution evidence.');
+    }
+    console.log('[eval-integrity] current inputs; agent behavior NOT evaluated. Run eval:verify before agent activation.');
+    return;
   }
 
   const summary = report.summary;

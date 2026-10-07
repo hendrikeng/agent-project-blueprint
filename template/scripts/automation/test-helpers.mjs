@@ -50,8 +50,9 @@ async function fixtureScripts() {
   return JSON.parse(await fs.readFile(path.join(templateRoot, 'package.json'), 'utf8')).scripts;
 }
 
-export async function createTemplateRepo() {
+export async function createTemplateRepo(t) {
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'harness-flat-queue-'));
+  t.after(() => fs.rm(tempRoot, { recursive: true, force: true, maxRetries: 3 }));
   await copyHarnessFixture(tempRoot);
   const packageJson = {
     name: 'flat-queue-fixture',

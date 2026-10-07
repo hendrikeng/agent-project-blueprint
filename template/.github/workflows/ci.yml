@@ -31,12 +31,14 @@ jobs:
     outputs:
       scope: ${{ steps.scope.outputs.scope }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
       - run: npm run pr:verify
         if: github.event_name == 'pull_request'
       - id: scope
@@ -58,14 +60,16 @@ jobs:
         run: |
           test "$RESULT" = success
           case "$SCOPE" in metadata|docs|product|harness|broad|full) ;; *) exit 1 ;; esac
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: needs.scope.outputs.scope != 'metadata'
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         if: needs.scope.outputs.scope != 'metadata'
         with:
           node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
       - run: corepack enable
         if: needs.scope.outputs.scope != 'metadata'
       - run: ${{ env.CI_INSTALL_COMMAND }}
@@ -90,24 +94,27 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
       - run: corepack enable
       - run: ${{ env.CI_INSTALL_COMMAND }}
       - name: Verify release candidate PR
         if: github.event_name == 'pull_request'
-        run: npm run release:verify
+        run: npm run project:gates:release
         env:
           RELEASE_HEAD_REF: ${{ github.event.pull_request.head.sha }}
       - name: Verify release candidate merge queue
         if: github.event_name == 'merge_group'
-        run: npm run release:verify -- --allow-any-branch
+        run: npm run project:gates:release
         env:
           RELEASE_BASE_REF: origin/main
+          RELEASE_ALLOW_ANY_BRANCH: "true"
 
   full-gate:
     name: ${{ github.event_name == 'pull_request' && github.event.action == 'edited' && !github.event.changes.base && 'Metadata Result' || 'Full Gate' }}

@@ -1,6 +1,6 @@
 import { readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
-import { metadataValue, parseMetadata, parseMustLandChecklist } from "./lib/plan-metadata.mjs";
+import { metadataValue, parseMetadata, parseMustLandChecklist, validatePlanRecord } from "./lib/plan-metadata.mjs";
 
 export const ACTIVE_PLAN_DIR = "docs/exec-plans/active/";
 export const COMPLETED_PLAN_DIR = "docs/exec-plans/completed/";
@@ -59,10 +59,8 @@ export const HIGH_RISK_STANDARD_CHANGE_FILES = [
   "vitest.config.ts",
   "AGENTS.md",
   "ARCHITECTURE.md",
-  "README.md",
   "docs/PLANS.md",
   "docs/SECURITY.md",
-  "docs/product-specs/CURRENT-STATE.md",
 ];
 
 const PLAN_SURFACE_DIRS = [
@@ -77,11 +75,11 @@ function isMarkdownPlanDoc(filePath) {
 }
 
 export function isActivePlanPath(filePath) {
-  return filePath.startsWith(ACTIVE_PLAN_DIR) && !filePath.startsWith(`${ACTIVE_PLAN_DIR}evidence/`) && isMarkdownPlanDoc(filePath);
+  return filePath.startsWith(ACTIVE_PLAN_DIR) && !filePath.split('/').includes('evidence') && isMarkdownPlanDoc(filePath);
 }
 
 export function isCompletedPlanPath(filePath) {
-  return filePath.startsWith(COMPLETED_PLAN_DIR) && isMarkdownPlanDoc(filePath);
+  return filePath.startsWith(COMPLETED_PLAN_DIR) && !filePath.split('/').includes('evidence') && isMarkdownPlanDoc(filePath);
 }
 
 export function isEvidenceIndexPath(filePath) {
@@ -99,10 +97,13 @@ export function isStandardChangeBranch(branchName) {
 }
 
 export function isHighRiskStandardChangePath(filePath) {
-  const rootedPath = `/${String(filePath).replaceAll("\\", "/")}`;
+  const rootedPath = `/${String(filePath).replaceAll("\\", "/").replace(/([a-z0-9])([A-Z])/g, "$1-$2")}`;
+  const sensitiveWords = rootedPath.replace(/(^|[/._-])author(?:s|ed|ing|ship)?(?=$|[/._-])/gi, "$1");
   return HIGH_RISK_STANDARD_CHANGE_FILES.includes(filePath)
     || HIGH_RISK_STANDARD_CHANGE_PREFIXES.some((prefix) => filePath.startsWith(prefix))
-    || HIGH_RISK_STANDARD_CHANGE_SEGMENTS.some((segment) => rootedPath.includes(segment));
+    || HIGH_RISK_STANDARD_CHANGE_SEGMENTS.some((segment) => rootedPath.includes(segment))
+    || /auth|secur|secret|credential|identity|tenancy|payment|billing|money|migration|schema|permission|deploy|database|persistence|(?:^|[/._-])db(?:[/._-]|$)/i.test(sensitiveWords)
+    || (!/\.(?:css|scss|sass|less)$/i.test(filePath) && /token/i.test(rootedPath));
 }
 
 export function summarizePlanCloseoutDiff(changedFiles, { branchName = "" } = {}) {
@@ -158,6 +159,7 @@ export function assertMergeReadyPlanCloseout(changedFiles, options = {}) {
     return readFileSync(real, "utf8");
   });
   const completedIds = new Set();
+  const seenPlanIds = new Set(options.existingPlanIds ?? []);
   for (const planFile of summary.completedPlanFiles) {
     const content = readPlan(planFile);
     const metadata = parseMetadata(content);
@@ -167,6 +169,11 @@ export function assertMergeReadyPlanCloseout(changedFiles, options = {}) {
         checklist.length === 0 || checklist.some((item) => !item.checked || !item.id) ||
         !['approved', 'not-required'].includes(metadataValue(metadata, 'Security-Approval'))) {
       throw new Error(`changed completed plan needs completed status, checked must-land IDs, and resolved required approval: ${planFile}`);
+    }
+    const findings = validatePlanRecord({ phase: 'completed', rel: planFile, content, metadata, planId: id },
+      { knownPlanIds: options.knownPlanIds, seenPlanIds });
+    if (findings.length) {
+      throw new Error(`changed completed plan violates its delivery contract: ${findings.map(f => `${f.code}: ${f.message}`).join('; ')} (${planFile})`);
     }
     const evidence = metadataValue(metadata, 'Done-Evidence').replace(/^`|`$/g, '');
     if (!isEvidenceIndexPath(evidence) || path.posix.normalize(evidence) !== evidence ||

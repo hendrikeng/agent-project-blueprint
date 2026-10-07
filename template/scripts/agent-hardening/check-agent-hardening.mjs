@@ -26,8 +26,6 @@ const requiredHeadings = {
   'VISION.md': [
     'Purpose',
     'Users And Outcomes',
-    'Desired State',
-    'Durable Product Principles',
     'Strategic Boundaries',
     'Canonical Product References'
   ],
@@ -58,10 +56,6 @@ const requiredHeadings = {
   'docs/agent-hardening/MEMORY_CONTEXT.md': [
     'Context Budget Rules',
     'Persistence Rules',
-    'Improve Before Re-Architecture',
-    'Do Not Add Yet',
-    'Consider Bigger Changes Later',
-    'Safe Rule',
     'Provenance and Redaction'
   ]
 };
@@ -108,7 +102,13 @@ for (const relPath of requiredMarkdownFiles) {
 
   const content = await fs.readFile(absPath, 'utf8');
   checkMetadata(content, relPath);
-  checkHeadings(content, relPath);
+  if (relPath === 'VISION.md' && /^Source of Truth:\s+README\.md#product-direction\s*$/m.test(content)) {
+    const readme = await fs.readFile(path.join(rootDir, 'README.md'), 'utf8').catch(() => '');
+    const direction = readme.match(/^## Product Direction\r?\n([\s\S]*?)(?=^#{1,2}\s|(?![\s\S]))/m)?.[1].trim();
+    if (!direction) findings.push('[MISSING_DIRECTION] README.md needs a nonempty Product Direction section for the VISION pointer.');
+  } else {
+    checkHeadings(content, relPath);
+  }
 }
 
 for (const relPath of requiredJsonFiles) {

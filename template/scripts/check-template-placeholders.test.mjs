@@ -16,14 +16,16 @@ function runPlaceholderCheck(rootDir) {
   });
 }
 
-async function createFixtureRoot() {
-  return fs.mkdtemp(path.join(os.tmpdir(), 'placeholder-check-'));
+async function createFixtureRoot(t) {
+  const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), 'placeholder-check-'));
+  t.after(() => fs.rm(rootDir, { recursive: true, force: true }));
+  return rootDir;
 }
 
 const placeholder = (name) => `{${`{${name}}`}}`;
 
-test('placeholder checker ignores documented placeholder inventory and dependency folders', async () => {
-  const rootDir = await createFixtureRoot();
+test('placeholder checker ignores documented placeholder inventory and dependency folders', async (t) => {
+  const rootDir = await createFixtureRoot(t);
   await fs.mkdir(path.join(rootDir, 'node_modules', 'package'), { recursive: true });
   await fs.mkdir(path.join(rootDir, '.git'), { recursive: true });
   await fs.writeFile(path.join(rootDir, 'PLACEHOLDERS.md'), `Keep ${placeholder('PRODUCT')} documented here.\n`, 'utf8');
@@ -37,8 +39,8 @@ test('placeholder checker ignores documented placeholder inventory and dependenc
   assert.match(result.stdout, /\[placeholder-check\] passed/);
 });
 
-test('placeholder checker respects gitignore for generated and local files', async () => {
-  const rootDir = await createFixtureRoot();
+test('placeholder checker respects gitignore for generated and local files', async (t) => {
+  const rootDir = await createFixtureRoot(t);
   await fs.mkdir(path.join(rootDir, 'dist'), { recursive: true });
   await fs.writeFile(path.join(rootDir, '.gitignore'), 'dist/\n.env\n', 'utf8');
   await fs.writeFile(path.join(rootDir, 'dist', 'bundle.js'), `const token = "${placeholder('IGNORED_DIST')}";\n`, 'utf8');
@@ -53,8 +55,8 @@ test('placeholder checker respects gitignore for generated and local files', asy
   assert.match(result.stdout, /\[placeholder-check\] passed/);
 });
 
-test('placeholder checker ignores non-blueprint tokens after installation', async () => {
-  const rootDir = await createFixtureRoot();
+test('placeholder checker ignores non-blueprint tokens after installation', async (t) => {
+  const rootDir = await createFixtureRoot(t);
   await fs.mkdir(path.join(rootDir, 'docs', 'ops', 'automation'), { recursive: true });
   await fs.writeFile(
     path.join(rootDir, 'docs', 'ops', 'automation', 'harness-manifest.json'),
@@ -67,8 +69,8 @@ test('placeholder checker ignores non-blueprint tokens after installation', asyn
   assert.equal(result.status, 0, result.stderr);
 });
 
-test('placeholder checker still scans project-owned starter files', async () => {
-  const rootDir = await createFixtureRoot();
+test('placeholder checker still scans project-owned starter files', async (t) => {
+  const rootDir = await createFixtureRoot(t);
   await fs.mkdir(path.join(rootDir, 'docs/ops/automation'), { recursive: true });
   await fs.writeFile(path.join(rootDir, 'docs/ops/automation/harness-manifest.json'), JSON.stringify({
     governedPlaceholders: ['DOC_OWNER'], managedFiles: [], projectFiles: [{ targetPath: 'README.md' }]
@@ -79,8 +81,8 @@ test('placeholder checker still scans project-owned starter files', async () => 
   assert.match(result.stdout, /README\.md:1:Owner:/);
 });
 
-test('placeholder checker reports unresolved template tokens with file and line', async () => {
-  const rootDir = await createFixtureRoot();
+test('placeholder checker reports unresolved template tokens with file and line', async (t) => {
+  const rootDir = await createFixtureRoot(t);
   await fs.mkdir(path.join(rootDir, 'docs'), { recursive: true });
   await fs.writeFile(path.join(rootDir, 'docs', 'README.md'), `Owner: ${placeholder('DOC_OWNER')}\n`, 'utf8');
 

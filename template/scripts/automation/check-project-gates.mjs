@@ -149,7 +149,7 @@ function validateConfig(config, templateMode) {
   }
 
   const ids = new Set();
-  const seenRequiredProfiles = new Set();
+  const seenProfiles = new Set();
   for (const [index, gate] of config.gates.entries()) {
     if (!isObject(gate)) {
       findings.push(`Gate at index ${index} must be an object.`);
@@ -175,8 +175,8 @@ function validateConfig(config, templateMode) {
       findings.push(`Gate '${id || index}' needs a rationale of at least 16 characters.`);
     }
     validateCommand(gate, findings, templateMode);
-    if (status === 'required' && (profile === 'fast' || profile === 'full')) {
-      seenRequiredProfiles.add(`${profile}:${id}`);
+    if (profile === 'fast' || profile === 'full') {
+      seenProfiles.add(`${profile}:${id}`);
     }
   }
 
@@ -187,8 +187,8 @@ function validateConfig(config, templateMode) {
     ['full', 'build']
   ];
   for (const [profile, id] of requiredBaseline) {
-    if (!seenRequiredProfiles.has(`${profile}:${id}`)) {
-      findings.push(`Baseline gate '${id}' must be required in profile '${profile}'.`);
+    if (!seenProfiles.has(`${profile}:${id}`)) {
+      findings.push(`Baseline gate '${id}' must be declared in profile '${profile}', with a real command or explicit exemption rationale.`);
     }
   }
 

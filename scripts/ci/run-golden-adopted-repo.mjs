@@ -12,10 +12,6 @@ function todayIsoDate() {
   return new Date().toISOString().slice(0, 10);
 }
 
-function toPosix(value) {
-  return String(value).replaceAll(path.sep, '/');
-}
-
 function replacementForToken(token) {
   const today = todayIsoDate();
   const replacements = {
@@ -488,12 +484,16 @@ async function writeProductDocs(repoDir) {
     '- Only queued books appear in `nextBooks` results.',
     '- Finished books retain a non-empty `finishedAt` marker.',
     '',
+    '## Current Gaps',
+    '',
+    '- No unfinished work in the delivered core. Persistence is a proposed future slice: `docs/future/2026-05-12-persist-reading-list.md`.',
+    '',
     '## Current Risks And Open Questions',
     '',
     '- Persistence is intentionally out of scope for this fixture.',
     '- Browser rendering is intentionally out of scope for this fixture.',
     '',
-    '## Agent Use',
+    '## Snapshot Maintenance',
     '',
     '- Treat `src/reading-list.js` and `test/` as the live product proof for this fixture.',
     '- Keep project gates aligned with the real app commands in `docs/governance/project-gates.json`.'
@@ -689,59 +689,64 @@ function runCommand(repoDir, command, extraEnv = {}) {
 
 async function main() {
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'golden-adopted-repo-'));
-  const repoDir = path.join(tempRoot, 'repo');
-  const newRepoDir = path.join(tempRoot, 'new-repo');
-  runBlueprint('harness-sync.mjs', ['install', '--target', newRepoDir]);
-  await configureBlueprint(newRepoDir);
-  const newLock = JSON.parse(await fs.readFile(path.join(newRepoDir, 'package-lock.json'), 'utf8'));
-  assert.equal(newLock.lockfileVersion, 3);
-  const unrun = spawnSync(process.execPath, ['scripts/agent-hardening/check-evals.mjs'], { cwd: newRepoDir, encoding: 'utf8' });
-  assert.equal(unrun.status, 1);
-  assert.match(unrun.stderr, /not a completed passing run/);
+  try {
+    const repoDir = path.join(tempRoot, 'repo');
+    const newRepoDir = path.join(tempRoot, 'new-repo');
+    runBlueprint('harness-sync.mjs', ['install', '--target', newRepoDir]);
+    await configureBlueprint(newRepoDir);
+    const newLock = JSON.parse(await fs.readFile(path.join(newRepoDir, 'package-lock.json'), 'utf8'));
+    assert.equal(newLock.lockfileVersion, 3);
+    const unrun = spawnSync(process.execPath, ['scripts/agent-hardening/check-evals.mjs'], { cwd: newRepoDir, encoding: 'utf8' });
+    assert.equal(unrun.status, 1);
+    assert.match(unrun.stderr, /not a completed passing run/);
 
-  await fs.mkdir(repoDir, { recursive: true });
-  await writePackageJson(repoDir);
-  await fs.mkdir(path.join(repoDir, 'src'), { recursive: true });
-  const existingSource = 'export const existingProjectFile = true;\n';
-  await fs.writeFile(path.join(repoDir, 'src/existing.js'), existingSource);
-  const originalPackage = JSON.parse(await fs.readFile(path.join(repoDir, 'package.json'), 'utf8'));
-  await fs.writeFile(path.join(repoDir, 'package-lock.json'), JSON.stringify({
-    name: originalPackage.name, version: originalPackage.version, lockfileVersion: 3,
-    packages: { '': { name: originalPackage.name, version: originalPackage.version } }
-  }));
-  runBlueprint('harness-sync.mjs', ['adopt', '--target', repoDir]);
-  assert.deepEqual(JSON.parse(await fs.readFile(path.join(repoDir, 'package.json'), 'utf8')), originalPackage);
-  const configured = await configureBlueprint(repoDir);
-  for (const [name, command] of Object.entries(originalPackage.scripts)) assert.equal(configured.scripts[name], command);
-  assert.equal(await fs.readFile(path.join(repoDir, 'src/existing.js'), 'utf8'), existingSource);
-  const releaseBase = initializeReleaseHistory(repoDir);
-  await writeAppFiles(repoDir);
-  await writeArchitectureFiles(repoDir);
-  await writeProjectGates(repoDir);
-  await writeProductDocs(repoDir);
-  await writePlanEvidence(repoDir, releaseBase);
-  await runFixtureEvals(repoDir);
-  runCommand(repoDir, 'npm run eval:refresh', { CI: '1' });
-  runCommand(repoDir, 'npm run bootstrap:cleanup', { CI: '1' });
-  commitReleaseSlice(repoDir);
+    await fs.mkdir(repoDir, { recursive: true });
+    await writePackageJson(repoDir);
+    await fs.mkdir(path.join(repoDir, 'src'), { recursive: true });
+    const existingSource = 'export const existingProjectFile = true;\n';
+    await fs.writeFile(path.join(repoDir, 'src/existing.js'), existingSource);
+    const originalPackage = JSON.parse(await fs.readFile(path.join(repoDir, 'package.json'), 'utf8'));
+    await fs.writeFile(path.join(repoDir, 'package-lock.json'), JSON.stringify({
+      name: originalPackage.name, version: originalPackage.version, lockfileVersion: 3,
+      packages: { '': { name: originalPackage.name, version: originalPackage.version } }
+    }));
+    runBlueprint('harness-sync.mjs', ['adopt', '--target', repoDir]);
+    assert.deepEqual(JSON.parse(await fs.readFile(path.join(repoDir, 'package.json'), 'utf8')), originalPackage);
+    const configured = await configureBlueprint(repoDir);
+    for (const [name, command] of Object.entries(originalPackage.scripts)) assert.equal(configured.scripts[name], command);
+    assert.equal(await fs.readFile(path.join(repoDir, 'src/existing.js'), 'utf8'), existingSource);
+    const releaseBase = initializeReleaseHistory(repoDir);
+    await writeAppFiles(repoDir);
+    await writeArchitectureFiles(repoDir);
+    await writeProjectGates(repoDir);
+    await writeProductDocs(repoDir);
+    await writePlanEvidence(repoDir, releaseBase);
+    await runFixtureEvals(repoDir);
+    runCommand(repoDir, 'npm run eval:refresh', { CI: '1' });
+    runCommand(repoDir, 'npm run bootstrap:cleanup', { CI: '1' });
+    runCommand(repoDir, 'npm run context:compile', { CI: '1' });
+    commitReleaseSlice(repoDir);
 
-  const commands = [
-    'npm run harness:verify',
-    'npm run docs:verify',
-    'npm run quality:score',
-    'npm run eval:verify',
-    'npm run plans:verify -- --scope all',
-    // Standalone full includes fast; run the adopted application's gates once.
-    'npm run verify:full',
-    `npm run release:verify -- --base ${releaseBase}`,
-    `npm run release:notes -- --base ${releaseBase}`
-  ];
+    const commands = [
+      'npm run harness:verify',
+      'npm run docs:verify',
+      'npm run quality:score',
+      'npm run eval:verify',
+      'npm run plans:verify -- --scope all',
+      // Standalone full includes fast; run the adopted application's gates once.
+      'npm run verify:full',
+      'npm run project:gates:release',
+      `npm run release:notes -- --base ${releaseBase}`
+    ];
 
-  for (const command of commands) {
-    runCommand(repoDir, command, { CI: '1' });
+    for (const command of commands) {
+      runCommand(repoDir, command, { CI: '1', RELEASE_BASE_REF: releaseBase });
+    }
+
+  } finally {
+    await fs.rm(tempRoot, { recursive: true, force: true });
   }
-
-  console.log(`[golden-adopted-repo] passed (${toPosix(repoDir)})`);
+  console.log('[golden-adopted-repo] passed.');
 }
 
 main().catch((error) => {

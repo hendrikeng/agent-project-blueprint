@@ -8,6 +8,7 @@ import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 import { decisions } from './bootstrap-test-helpers.mjs';
+import { configureContent } from './bootstrap-configure.mjs';
 
 async function configure(targetDir) {
   const packetPath = path.join(targetDir, 'decisions.json');
@@ -37,10 +38,14 @@ function run(args, cwd = repoRoot) {
   });
 }
 
-test('harness-sync install writes target files and downstream manifest', async () => {
+test('harness-sync install writes target files and downstream manifest', async (t) => {
   const targetDir = await fs.mkdtemp(path.join(os.tmpdir(), 'harness-sync-install-'));
+  t.after(() => fs.rm(targetDir, { recursive: true, force: true }));
   const result = run(['install', '--target', targetDir]);
   assert.equal(result.status, 0);
+
+  assert.equal(await fs.readFile(path.join(targetDir, '.gitignore'), 'utf8'),
+    await fs.readFile(path.join(repoRoot, 'template/.gitignore'), 'utf8'));
 
   const readme = await fs.readFile(path.join(targetDir, 'README.md'), 'utf8');
   assert.match(readme, /## Product Scope/);
@@ -72,19 +77,22 @@ test('harness-sync install writes target files and downstream manifest', async (
   assert.match(String(repeated.stderr), /TARGET_ALREADY_INSTALLED.*update or drift/);
 });
 
-test('harness-sync install creates nested target directories', async () => {
+test('harness-sync install creates nested target directories', async (t) => {
   const parentDir = await fs.mkdtemp(path.join(os.tmpdir(), 'harness-sync-nested-'));
+  t.after(() => fs.rm(parentDir, { recursive: true, force: true }));
   const targetDir = path.join(parentDir, 'missing', 'project');
   const result = run(['install', '--target', targetDir]);
   assert.equal(result.status, 0, String(result.stderr));
   await fs.access(path.join(targetDir, 'AGENTS.md'));
 });
 
-test('harness-sync preserves existing project files during adoption', async () => {
+test('harness-sync preserves existing project files during adoption', async (t) => {
   const targetDir = await fs.mkdtemp(path.join(os.tmpdir(), 'harness-sync-adopt-'));
+  t.after(() => fs.rm(targetDir, { recursive: true, force: true }));
   await fs.writeFile(path.join(targetDir, 'README.md'), '# Existing Project\n', 'utf8');
   await fs.writeFile(path.join(targetDir, 'package.json'), '{"name":"existing"}\n', 'utf8');
   await fs.writeFile(path.join(targetDir, 'npm-shrinkwrap.json'), '{"lockfileVersion":3}\n', 'utf8');
+  await fs.writeFile(path.join(targetDir, '.gitignore'), 'local-build/\n');
 
   const drift = run(['drift', '--target', targetDir, '--json', 'true']);
   assert.equal(drift.status, 2);
@@ -94,19 +102,23 @@ test('harness-sync preserves existing project files during adoption', async () =
   assert.equal(install.status, 1);
   assert.match(String(install.stderr), /INSTALL_TARGET_NOT_EMPTY/);
   assert.equal(await fs.readFile(path.join(targetDir, 'README.md'), 'utf8'), '# Existing Project\n');
+  assert.equal(await fs.readFile(path.join(targetDir, '.gitignore'), 'utf8'), 'local-build/\n');
 
   const adopt = run(['adopt', '--target', targetDir, '--json', 'true']);
   assert.equal(adopt.status, 0);
   const payload = JSON.parse(String(adopt.stdout));
   assert.equal(payload.preserved.includes('README.md'), true);
+  assert.equal(payload.preserved.includes('.gitignore'), true);
   assert.equal(payload.filesCopied > 10, true);
   assert.equal(await fs.readFile(path.join(targetDir, 'README.md'), 'utf8'), '# Existing Project\n');
+  assert.equal(await fs.readFile(path.join(targetDir, '.gitignore'), 'utf8'), 'local-build/\n');
   await fs.access(path.join(targetDir, 'AGENTS.md'));
   await fs.access(path.join(targetDir, 'docs', 'ops', 'automation', 'harness-manifest.json'));
 });
 
-test('harness-sync rejects unsupported adoption before copying files', async () => {
+test('harness-sync rejects unsupported adoption before copying files', async (t) => {
   const targetDir = await fs.mkdtemp(path.join(os.tmpdir(), 'harness-sync-unsupported-'));
+  t.after(() => fs.rm(targetDir, { recursive: true, force: true }));
   await fs.writeFile(path.join(targetDir, 'README.md'), '# Existing Project\n', 'utf8');
 
   const result = run(['adopt', '--target', targetDir]);
@@ -115,8 +127,9 @@ test('harness-sync rejects unsupported adoption before copying files', async () 
   assert.deepEqual(await fs.readdir(targetDir), ['README.md']);
 });
 
-test('harness-sync rejects bootstrap path collisions before copying files', async () => {
+test('harness-sync rejects bootstrap path collisions before copying files', async (t) => {
   const targetDir = await fs.mkdtemp(path.join(os.tmpdir(), 'harness-sync-bootstrap-conflict-'));
+  t.after(() => fs.rm(targetDir, { recursive: true, force: true }));
   await fs.writeFile(path.join(targetDir, 'package.json'), '{"name":"existing"}\n', 'utf8');
   await fs.writeFile(path.join(targetDir, 'yarn.lock'), '# lock\n', 'utf8');
   await fs.writeFile(path.join(targetDir, 'PLACEHOLDERS.md'), '# Existing contract\n', 'utf8');
@@ -127,8 +140,9 @@ test('harness-sync rejects bootstrap path collisions before copying files', asyn
   assert.deepEqual((await fs.readdir(targetDir)).sort(), ['PLACEHOLDERS.md', 'package.json', 'yarn.lock']);
 });
 
-test('harness-sync propagates unreadable target errors before copying files', { skip: process.platform === 'win32' }, async () => {
+test('harness-sync propagates unreadable target errors before copying files', { skip: process.platform === 'win32' }, async (t) => {
   const targetDir = await fs.mkdtemp(path.join(os.tmpdir(), 'harness-sync-unreadable-'));
+  t.after(() => fs.rm(targetDir, { recursive: true, force: true }));
   const readmePath = path.join(targetDir, 'README.md');
   await fs.writeFile(readmePath, '# Existing\n', { mode: 0o200 });
   const result = run(['install', '--target', targetDir]);
@@ -137,8 +151,9 @@ test('harness-sync propagates unreadable target errors before copying files', { 
   await assert.rejects(fs.access(path.join(targetDir, 'AGENTS.md')));
 });
 
-test('harness-sync rejects non-file target collisions before copying files', async () => {
+test('harness-sync rejects non-file target collisions before copying files', async (t) => {
   const targetDir = await fs.mkdtemp(path.join(os.tmpdir(), 'harness-sync-directory-conflict-'));
+  t.after(() => fs.rm(targetDir, { recursive: true, force: true }));
   await fs.mkdir(path.join(targetDir, 'AGENTS.md'));
 
   const result = run(['install', '--target', targetDir]);
@@ -147,9 +162,11 @@ test('harness-sync rejects non-file target collisions before copying files', asy
   assert.deepEqual(await fs.readdir(targetDir), ['AGENTS.md']);
 });
 
-test('harness-sync refuses target paths that traverse symbolic links', async () => {
+test('harness-sync refuses target paths that traverse symbolic links', async (t) => {
   const targetDir = await fs.mkdtemp(path.join(os.tmpdir(), 'harness-sync-symlink-'));
+  t.after(() => fs.rm(targetDir, { recursive: true, force: true }));
   const outsideDir = await fs.mkdtemp(path.join(os.tmpdir(), 'harness-sync-outside-'));
+  t.after(() => fs.rm(outsideDir, { recursive: true, force: true }));
   await fs.symlink(outsideDir, path.join(targetDir, 'docs'));
   await fs.writeFile(path.join(targetDir, 'package.json'), '{"name":"existing"}\n', 'utf8');
   await fs.writeFile(path.join(targetDir, 'package-lock.json'), '{"lockfileVersion":3}\n', 'utf8');
@@ -161,8 +178,9 @@ test('harness-sync refuses target paths that traverse symbolic links', async () 
   assert.deepEqual(await fs.readdir(outsideDir), []);
 });
 
-test('harness-sync treats bootstrap helpers as removable after adoption', async () => {
+test('harness-sync treats bootstrap helpers as removable after adoption', async (t) => {
   const targetDir = await fs.mkdtemp(path.join(os.tmpdir(), 'harness-sync-bootstrap-only-'));
+  t.after(() => fs.rm(targetDir, { recursive: true, force: true }));
   assert.equal(run(['install', '--target', targetDir]).status, 0);
 
   for (const relative of bootstrapOnlyPaths) {
@@ -180,8 +198,9 @@ test('harness-sync treats bootstrap helpers as removable after adoption', async 
   }
 });
 
-test('harness-sync drift treats a missing manifest as drift', async () => {
+test('harness-sync drift treats a missing manifest as drift', async (t) => {
   const targetDir = await fs.mkdtemp(path.join(os.tmpdir(), 'harness-sync-manifest-drift-'));
+  t.after(() => fs.rm(targetDir, { recursive: true, force: true }));
   assert.equal(run(['install', '--target', targetDir]).status, 0);
   await fs.rm(path.join(targetDir, 'docs', 'ops', 'automation', 'harness-manifest.json'));
 
@@ -192,8 +211,9 @@ test('harness-sync drift treats a missing manifest as drift', async () => {
   assert.equal(payload.driftDetected, true);
 });
 
-test('harness-sync drift reports non-file managed paths as modified JSON', async () => {
+test('harness-sync drift reports non-file managed paths as modified JSON', async (t) => {
   const targetDir = await fs.mkdtemp(path.join(os.tmpdir(), 'harness-sync-path-drift-'));
+  t.after(() => fs.rm(targetDir, { recursive: true, force: true }));
   assert.equal(run(['install', '--target', targetDir]).status, 0);
   await fs.rm(path.join(targetDir, 'docs/agent-hardening/RUN_CONTROL.md'));
   await fs.mkdir(path.join(targetDir, 'docs/agent-hardening/RUN_CONTROL.md'));
@@ -203,8 +223,9 @@ test('harness-sync drift reports non-file managed paths as modified JSON', async
   assert.equal(JSON.parse(String(result.stdout)).modified.includes('docs/agent-hardening/RUN_CONTROL.md'), true);
 });
 
-test('harness-sync drift reports intermediate non-directory paths as modified JSON', async () => {
+test('harness-sync drift reports intermediate non-directory paths as modified JSON', async (t) => {
   const targetDir = await fs.mkdtemp(path.join(os.tmpdir(), 'harness-sync-parent-drift-'));
+  t.after(() => fs.rm(targetDir, { recursive: true, force: true }));
   assert.equal(run(['install', '--target', targetDir]).status, 0);
   await fs.rm(path.join(targetDir, 'docs'), { recursive: true });
   await fs.writeFile(path.join(targetDir, 'docs'), 'occupied\n', 'utf8');
@@ -214,8 +235,9 @@ test('harness-sync drift reports intermediate non-directory paths as modified JS
   assert.equal(JSON.parse(String(result.stdout)).modified.some((entry) => entry.startsWith('docs/')), true);
 });
 
-test('harness-sync drift reports modified managed files', async () => {
+test('harness-sync drift reports modified managed files', async (t) => {
   const targetDir = await fs.mkdtemp(path.join(os.tmpdir(), 'harness-sync-drift-'));
+  t.after(() => fs.rm(targetDir, { recursive: true, force: true }));
   assert.equal(run(['install', '--target', targetDir]).status, 0);
 
   await fs.writeFile(path.join(targetDir, 'docs/agent-hardening/RUN_CONTROL.md'), '# Modified\n', 'utf8');
@@ -226,9 +248,11 @@ test('harness-sync drift reports modified managed files', async () => {
   assert.equal(payload.modified.includes('docs/agent-hardening/RUN_CONTROL.md'), true);
 });
 
-test('harness-sync update never force-overwrites modified managed files', async () => {
+test('harness-sync update never force-overwrites modified managed files', async (t) => {
   const targetDir = await fs.mkdtemp(path.join(os.tmpdir(), 'harness-sync-update-'));
+  t.after(() => fs.rm(targetDir, { recursive: true, force: true }));
   const callerDir = await fs.mkdtemp(path.join(os.tmpdir(), 'harness-sync-caller-'));
+  t.after(() => fs.rm(callerDir, { recursive: true, force: true }));
 
   assert.equal(run(['install', '--target', targetDir], callerDir).status, 0);
   await configure(targetDir);
@@ -243,8 +267,9 @@ test('harness-sync update never force-overwrites modified managed files', async 
   }
 });
 
-test('harness-sync update compares configured hashes rather than raw source hashes', async () => {
+test('harness-sync update compares configured hashes rather than raw source hashes', async (t) => {
   const targetDir = await fs.mkdtemp(path.join(os.tmpdir(), 'harness-sync-incoming-exact-'));
+  t.after(() => fs.rm(targetDir, { recursive: true, force: true }));
   assert.equal(run(['install', '--target', targetDir]).status, 0);
   await configure(targetDir);
   const manifestPath = path.join(targetDir, 'docs', 'ops', 'automation', 'harness-manifest.json');
@@ -257,8 +282,9 @@ test('harness-sync update compares configured hashes rather than raw source hash
   assert.equal(result.status, 0, String(result.stderr));
 });
 
-test('harness-sync update refuses collisions at newly managed paths', async () => {
+test('harness-sync update refuses collisions at newly managed paths', async (t) => {
   const targetDir = await fs.mkdtemp(path.join(os.tmpdir(), 'harness-sync-new-managed-'));
+  t.after(() => fs.rm(targetDir, { recursive: true, force: true }));
   assert.equal(run(['install', '--target', targetDir]).status, 0);
   await configure(targetDir);
   const targetPath = '.github/PULL_REQUEST_TEMPLATE/fix.md';
@@ -274,8 +300,9 @@ test('harness-sync update refuses collisions at newly managed paths', async () =
   assert.equal(await fs.readFile(path.join(targetDir, targetPath), 'utf8'), '# Existing downstream file\n');
 });
 
-test('harness-sync update refuses targets without an existing downstream harness manifest', async () => {
+test('harness-sync update refuses targets without an existing downstream harness manifest', async (t) => {
   const targetDir = await fs.mkdtemp(path.join(os.tmpdir(), 'harness-sync-unmanaged-'));
+  t.after(() => fs.rm(targetDir, { recursive: true, force: true }));
   await fs.writeFile(path.join(targetDir, 'README.md'), '# Plain Repo\n', 'utf8');
 
   const result = run(['update', '--target', targetDir]);
@@ -286,8 +313,9 @@ test('harness-sync update refuses targets without an existing downstream harness
   assert.equal(readme, '# Plain Repo\n');
 });
 
-test('harness-sync preserves downstream .gitignore content', async () => {
+test('harness-sync preserves downstream .gitignore content', async (t) => {
   const targetDir = await fs.mkdtemp(path.join(os.tmpdir(), 'harness-sync-gitignore-'));
+  t.after(() => fs.rm(targetDir, { recursive: true, force: true }));
   await fs.writeFile(
     path.join(targetDir, '.gitignore'),
     'node_modules\ncustom-cache\n',
@@ -307,10 +335,18 @@ test('harness-sync preserves downstream .gitignore content', async () => {
     manifest.managedFiles.some((entry) => entry.targetPath === '.gitignore'),
     false
   );
+  assert.equal(manifest.projectFiles.some((entry) => entry.targetPath === '.gitignore'), true);
+  await configure(targetDir);
+  assert.equal(run(['update', '--target', targetDir]).status, 0);
+  assert.equal(await fs.readFile(path.join(targetDir, '.gitignore'), 'utf8'), 'node_modules\ncustom-cache\n');
+  await fs.rm(path.join(targetDir, '.gitignore'));
+  assert.equal(run(['update', '--target', targetDir]).status, 0);
+  await assert.rejects(fs.access(path.join(targetDir, '.gitignore')), { code: 'ENOENT' });
 });
 
-test('harness-sync drift reports unexpected managed files from the downstream manifest', async () => {
+test('harness-sync drift reports unexpected managed files from the downstream manifest', async (t) => {
   const targetDir = await fs.mkdtemp(path.join(os.tmpdir(), 'harness-sync-unexpected-'));
+  t.after(() => fs.rm(targetDir, { recursive: true, force: true }));
   assert.equal(run(['install', '--target', targetDir]).status, 0);
 
   const manifestPath = path.join(targetDir, 'docs', 'ops', 'automation', 'harness-manifest.json');
@@ -330,8 +366,9 @@ test('harness-sync drift reports unexpected managed files from the downstream ma
   assert.deepEqual(payload.unexpectedManaged, ['obsolete-managed-file.txt']);
 });
 
-test('harness-sync update removes managed files no longer present in the source manifest', async () => {
+test('harness-sync update removes managed files no longer present in the source manifest', async (t) => {
   const targetDir = await fs.mkdtemp(path.join(os.tmpdir(), 'harness-sync-removed-'));
+  t.after(() => fs.rm(targetDir, { recursive: true, force: true }));
   assert.equal(run(['install', '--target', targetDir]).status, 0);
   await configure(targetDir);
 
@@ -356,7 +393,7 @@ test('harness-sync update removes managed files no longer present in the source 
   assert.equal(conflict.status, 1);
   assert.match(String(conflict.stderr), /MODIFIED_MANAGED_FILES.*check-agent-hardening/);
   assert.equal(await fs.readFile(removedPath, 'utf8'), 'local edit\n');
-  await fs.rm(removedPath);
+  await fs.writeFile(removedPath, 'stale\n');
 
   const result = run(['update', '--target', targetDir, '--json', 'true']);
   assert.equal(result.status, 0);
@@ -365,6 +402,113 @@ test('harness-sync update removes managed files no longer present in the source 
   assert.equal(payload.filesRemoved, 1);
   await assert.rejects(fs.access(removedPath));
   assert.equal(run(['drift', '--target', targetDir]).status, 0);
+});
+
+test('configured baseline migration requires explicit package and project-contract merges after update', async (t) => {
+  const fixture = await fs.mkdtemp(path.join(os.tmpdir(), 'harness-sync-migration-'));
+  t.after(() => fs.rm(fixture, { recursive: true, force: true }));
+  const blueprint = path.join(fixture, 'blueprint');
+  const target = path.join(fixture, 'target');
+  await fs.mkdir(blueprint);
+  const archive = spawnSync('git', ['archive', '86bb55f8d86c28d25551ab274b8b73ba8c70aa5a',
+    'scripts', 'distribution', 'template'], { cwd: repoRoot, maxBuffer: 8 * 1024 * 1024 });
+  assert.equal(archive.status, 0, String(archive.stderr));
+  const extracted = spawnSync('tar', ['-xf', '-', '-C', blueprint], { input: archive.stdout });
+  assert.equal(extracted.status, 0, String(extracted.stderr));
+  const execute = (script, args = []) => spawnSync(process.execPath, [path.join(blueprint, 'scripts', script), ...args],
+    { encoding: 'utf8', cwd: fixture });
+  const sync = (...args) => execute('harness-sync.mjs', [...args, '--target', target]);
+  assert.equal(sync('install').status, 0);
+  const packet = await decisions();
+  const packetPath = path.join(target, 'decisions.json');
+  await fs.writeFile(packetPath, JSON.stringify(packet));
+  const configured = execute('bootstrap-configure.mjs', ['--target', target, '--decisions', packetPath]);
+  assert.equal(configured.status, 0, configured.stderr);
+  const targetRun = (script, args = []) => spawnSync(process.execPath, [path.join(target, 'scripts', script), ...args],
+    { encoding: 'utf8', cwd: target, env: { ...process.env, CI: '1' } });
+  const cleaned = targetRun('cleanup-bootstrap-artifacts.mjs');
+  assert.equal(cleaned.status, 0, cleaned.stderr);
+  await assert.rejects(fs.access(path.join(target, 'package.scripts.fragment.json')), { code: 'ENOENT' });
+  const packagePath = path.join(target, 'package.json');
+  const pkg = JSON.parse(await fs.readFile(packagePath, 'utf8'));
+  pkg.scripts['verify:contracts'] = 'node ./scripts/check-local-contracts.mjs';
+  pkg.scripts['verify:licenses'] = 'node ./scripts/check-local-licenses.mjs';
+  await fs.writeFile(packagePath, JSON.stringify(pkg));
+  await fs.appendFile(path.join(target, 'AGENTS.md'), '\nLocal instruction: preserve the project terminology.\n');
+  await fs.appendFile(path.join(target, 'docs/product-specs/CURRENT-STATE.md'), '\nLocal capability: configured fixture.\n');
+  const projectPaths = ['AGENTS.md', 'README.md', 'docs/README.md', 'docs/product-specs/CURRENT-STATE.md',
+    'docs/governance/doc-checks.config.json', 'docs/governance/project-gates.json'];
+  const before = new Map(await Promise.all(projectPaths.map(async relative =>
+    [relative, await fs.readFile(path.join(target, relative), 'utf8')])));
+  // Replace only the disposable blueprint checkout with this incoming revision.
+  for (const directory of ['scripts', 'distribution', 'template']) {
+    await fs.cp(path.join(repoRoot, directory), path.join(blueprint, directory), { recursive: true });
+  }
+  const advisory = sync('drift', '--json', 'true');
+  assert.equal(advisory.status, 2);
+  assert.equal(JSON.parse(advisory.stdout).projectUpdatesAvailable.includes('docs/governance/doc-checks.config.json'), true);
+  const updated = sync('update');
+  assert.equal(updated.status, 0, updated.stderr);
+  for (const [relative, content] of before) assert.equal(await fs.readFile(path.join(target, relative), 'utf8'), content);
+  assert.deepEqual(JSON.parse(await fs.readFile(packagePath, 'utf8')), pkg);
+  await assert.rejects(fs.access(path.join(target, 'package.scripts.fragment.json')), { code: 'ENOENT' });
+  const missingScripts = targetRun('automation/check-harness-alignment.mjs');
+  assert.equal(missingScripts.status, 1);
+  for (const name of ['context:check', 'eval:integrity', 'project:gates:release']) {
+    assert.match(missingScripts.stderr, new RegExp(`SCRIPT_MISMATCH.*${name}`));
+  }
+  // Manual package merge: retain all local commands and integrate the three new contracts.
+  Object.assign(pkg.scripts, {
+    'context:check': 'node ./scripts/automation/compile-runtime-context.mjs --check',
+    'eval:integrity': 'node ./scripts/agent-hardening/check-evals.mjs --integrity-only',
+    'project:gates:release': 'node ./scripts/automation/check-project-gates.mjs --profile release --run'
+  });
+  await fs.writeFile(packagePath, JSON.stringify(pkg));
+  const render = async relative => configureContent(relative,
+    await fs.readFile(path.join(repoRoot, 'template', relative)), packet.values).toString('utf8');
+  const docsConfigPath = path.join(target, 'docs/governance/doc-checks.config.json');
+  const docsConfig = JSON.parse(await fs.readFile(docsConfigPath, 'utf8'));
+  const incomingConfig = JSON.parse(await render('docs/governance/doc-checks.config.json'));
+  assert.equal(docsConfig.sizeBudgets, undefined, 'the established baseline lacks the incoming byte budgets');
+  for (const key of ['sizeBudgets', 'markdownExcludePrefixes', 'staleness', 'requiredLinks', 'requiredHeadings', 'metadataRules']) {
+    docsConfig[key] = incomingConfig[key];
+  }
+  await fs.writeFile(docsConfigPath, JSON.stringify(docsConfig));
+  const staleContracts = targetRun('docs/check-governance.mjs');
+  assert.equal(staleContracts.status, 1);
+  assert.match(staleContracts.stderr + staleContracts.stdout, /Snapshot Maintenance/,
+    'package integration alone must not hide the missing snapshot contract');
+  // Review and merge changed document contracts while retaining local facts and instructions.
+  for (const relative of ['AGENTS.md', 'README.md', 'docs/README.md', 'docs/PLANS.md', 'docs/QUALITY_SCORE.md',
+    'docs/FRONTEND.md', 'docs/BACKEND.md', 'docs/SECURITY.md', 'docs/RELIABILITY.md', 'ARCHITECTURE.md', 'VISION.md',
+    'docs/future/README.md', 'docs/exec-plans/README.md', 'docs/exec-plans/active/README.md',
+    'docs/exec-plans/completed/README.md', 'docs/product-specs/CURRENT-STATE.md',
+    'docs/generated/README.md', 'docs/ops/releases/release-mapping.md']) {
+    const local = relative === 'AGENTS.md' ? '\nLocal instruction: preserve the project terminology.\n'
+      : relative === 'docs/product-specs/CURRENT-STATE.md' ? '\nLocal capability: configured fixture.\n' : '';
+    await fs.writeFile(path.join(target, relative), await render(relative) + local);
+  }
+  // Configured runtime and project gates already satisfy this update and stay project-owned.
+  assert.equal(await fs.readFile(path.join(target, 'docs/governance/project-gates.json'), 'utf8'),
+    before.get('docs/governance/project-gates.json'));
+  for (const [script, args] of [
+    ['automation/check-harness-alignment.mjs', []],
+    ['automation/compile-runtime-context.mjs', []],
+    ['agent-hardening/refresh-evals-report.mjs', []],
+    ['automation/compile-runtime-context.mjs', ['--check']],
+    ['agent-hardening/check-evals.mjs', ['--integrity-only']],
+    ['automation/verify-fast.mjs', ['--scope', 'docs']]
+  ]) {
+    const result = targetRun(script, args);
+    assert.equal(result.status, 0, `${script}: ${result.stdout}\n${result.stderr}`);
+  }
+  const report = JSON.parse(await fs.readFile(path.join(target, 'docs/generated/evals-report.json'), 'utf8'));
+  assert.equal(report.status, 'not-run');
+  assert.deepEqual(report.evidence, []);
+  assert.equal(targetRun('agent-hardening/check-evals.mjs').status, 1, 'integrity does not establish agent evaluation');
+  assert.deepEqual(JSON.parse(await fs.readFile(packagePath, 'utf8')).scripts, pkg.scripts);
+  assert.match(await fs.readFile(path.join(target, 'AGENTS.md'), 'utf8'), /Local instruction:/);
+  assert.match(await fs.readFile(path.join(target, 'docs/product-specs/CURRENT-STATE.md'), 'utf8'), /Local capability:/);
 });
 
 test('configured adoption updates incoming templates and fails safely before configuration mutation', async (t) => {
@@ -454,6 +598,12 @@ test('project-owned files survive edits, deletion, and legacy ownership release 
     await fs.writeFile(path.join(target, relative), `Local content: ${relative}\n`);
   }
   await fs.rm(path.join(target, 'VISION.md'));
+  const olderBaseline = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
+  olderBaseline.projectFiles.find(entry => entry.targetPath === 'AGENTS.md').sha256 = '0'.repeat(64);
+  await fs.writeFile(manifestPath, JSON.stringify(olderBaseline));
+  const advisory = run(['drift', '--target', target, '--json', 'true']);
+  assert.equal(advisory.status, 0);
+  assert.deepEqual(JSON.parse(String(advisory.stdout)).projectUpdatesAvailable, ['AGENTS.md']);
   for (const legacy of [false, true]) {
     if (legacy) {
       // Older manifests claimed these starter files, even without usable baselines.
@@ -474,8 +624,9 @@ test('project-owned files survive edits, deletion, and legacy ownership release 
   }
 });
 
-test('legacy manifests require explicit baseline migration', async () => {
+test('legacy manifests require explicit baseline migration', async (t) => {
   const target = await fs.mkdtemp(path.join(os.tmpdir(), 'harness-sync-legacy-'));
+  t.after(() => fs.rm(target, { recursive: true, force: true }));
   assert.equal(run(['install', '--target', target]).status, 0);
   await configure(target);
   const manifestPath = path.join(target, 'docs/ops/automation/harness-manifest.json');
@@ -503,8 +654,9 @@ test('legacy manifests require explicit baseline migration', async () => {
   assert.equal(run(['update', '--target', target]).status, 0);
 });
 
-test('adoption preserves genuine edits even after configuration records a baseline', async () => {
+test('adoption preserves genuine edits even after configuration records a baseline', async (t) => {
   const target = await fs.mkdtemp(path.join(os.tmpdir(), 'harness-sync-preserved-baseline-'));
+  t.after(() => fs.rm(target, { recursive: true, force: true }));
   await fs.mkdir(path.join(target, 'docs/agent-hardening'), { recursive: true });
   await fs.writeFile(path.join(target, 'docs/agent-hardening/RUN_CONTROL.md'), '# Existing project\n');
   await fs.writeFile(path.join(target, 'package.json'), '{"name":"existing"}\n');
@@ -517,14 +669,15 @@ test('adoption preserves genuine edits even after configuration records a baseli
   assert.equal(await fs.readFile(path.join(target, 'docs/agent-hardening/RUN_CONTROL.md'), 'utf8'), '# Existing project\n');
 });
 
-test('harness-sync refuses to install over the blueprint repository root', async () => {
+test('harness-sync refuses to install over the blueprint repository root', async (t) => {
   const result = run(['install', '--target', repoRoot]);
   assert.equal(result.status, 1);
   assert.match(String(result.stderr), /Target must be an adopted repository/);
 });
 
-test('harness-sync rejects downstream manifest paths that escape the target repo', async () => {
+test('harness-sync rejects downstream manifest paths that escape the target repo', async (t) => {
   const targetDir = await fs.mkdtemp(path.join(os.tmpdir(), 'harness-sync-escape-'));
+  t.after(() => fs.rm(targetDir, { recursive: true, force: true }));
   assert.equal(run(['install', '--target', targetDir]).status, 0);
 
   const manifestPath = path.join(targetDir, 'docs', 'ops', 'automation', 'harness-manifest.json');

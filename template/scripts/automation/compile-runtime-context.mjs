@@ -1,212 +1,123 @@
 #!/usr/bin/env node
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { resolveSafeRepoPath } from './lib/repo-paths.mjs';
+import { createHash } from 'node:crypto';
+import { resolveSafeRepoPath, assertNoRepoSymlinks } from './lib/repo-paths.mjs';
+import { parseMetadata, metadataValue, parseMustLandChecklist, ACTIVE_STATUSES, FUTURE_STATUSES } from './lib/plan-metadata.mjs';
 
-const DEFAULT_OUTPUT_PATH = 'docs/generated/AGENT-RUNTIME-CONTEXT.md';
-const DEFAULT_POLICY_PATH = 'docs/governance/policy-manifest.json';
+const root = process.cwd();
+const args = process.argv.slice(2);
+const outputIndex = args.indexOf('--output');
+const output = resolveSafeRepoPath(root, outputIndex < 0 ? 'docs/generated/AGENT-RUNTIME-CONTEXT.md' : args[outputIndex + 1], 'Context output path');
+const statePath = 'docs/product-specs/CURRENT-STATE.md';
+const digest = (content) => createHash('sha256').update(content).digest('hex');
+const cell = (value) => String(value).replace(/[\r\n|`]/g, ' ').slice(0, 120);
 
-function parseArgs(argv) {
-  const options = {};
-  for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index];
-    if (!token.startsWith('--')) {
+async function assertContained(target) {
+  await assertNoRepoSymlinks(root, target.rel);
+}
+
+async function read(relative) {
+  const target = resolveSafeRepoPath(root, relative, 'Context input path');
+  await assertContained(target);
+  return fs.readFile(target.abs, 'utf8');
+}
+
+async function plans(directory, statuses) {
+  const target = resolveSafeRepoPath(root, directory, 'Plan directory');
+  await assertContained(target);
+  return collectPlans(directory, statuses);
+}
+
+// Descendants come from readdir under checked roots; preserve their actual filenames.
+async function collectPlans(directory, statuses) {
+  const entries = await fs.readdir(path.join(root, directory), { withFileTypes: true });
+  const result = [];
+  for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+    if (entry.name === 'evidence') continue;
+    const relative = `${directory}/${entry.name}`;
+    if (entry.isSymbolicLink()) throw new Error(`Context path contains a symlink: ${relative}`);
+    if (entry.isDirectory()) {
+      result.push(...await collectPlans(relative, statuses));
       continue;
     }
-    const key = token.slice(2);
-    const next = argv[index + 1];
-    if (!next || next.startsWith('--')) {
-      options[key] = true;
-      continue;
-    }
-    options[key] = next;
-    index += 1;
+    if (entry.name === 'README.md' || !entry.name.endsWith('.md')) continue;
+    if (!entry.isFile()) throw new Error(`Plan must be a regular file: ${directory}/${entry.name}`);
+    const content = await fs.readFile(path.join(root, relative), 'utf8');
+    const metadata = parseMetadata(content);
+    const id = metadataValue(metadata, 'Plan-ID');
+    const status = metadataValue(metadata, 'Status');
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(id) || !statuses.has(status)) throw new Error(`Invalid unfinished plan metadata: ${relative}`);
+    const checklist = parseMustLandChecklist(content);
+    const remaining = checklist.filter(item => !item.checked).length;
+    const awaitingValidation = relative.startsWith('docs/exec-plans/active/') && ['validation', 'in-review'].includes(status);
+    if (!checklist.length || (!remaining && !awaitingValidation)) throw new Error(`Plan has no remaining checklist items; close or correct it: ${relative}`);
+    result.push({ id, status, remaining, relative, content, priority: metadataValue(metadata, 'Priority'), dependencies: metadataValue(metadata, 'Dependencies'), approval: metadataValue(metadata, 'Security-Approval') });
   }
-  return options;
+  return result.sort((a, b) => a.priority.localeCompare(b.priority) || a.id.localeCompare(b.id));
 }
 
-async function readJson(filePath) {
-  const raw = await fs.readFile(filePath, 'utf8');
-  return JSON.parse(raw);
-}
-
-function summarizeList(items, prefix = '') {
-  return (Array.isArray(items) ? items : [])
-    .map((entry) => `- ${prefix}${entry}`)
-    .join('\n');
-}
-
-function summarizeRules(rules) {
-  return (Array.isArray(rules) ? rules : [])
-    .map((rule) => `- \`${rule.id}\`: ${rule.statement}`)
-    .join('\n');
-}
-
-function pick(items, indexes) {
-  const source = Array.isArray(items) ? items : [];
-  return indexes.map((index) => source[index]).filter(Boolean);
-}
-
-function summarizeExecutionQuality(executionQuality) {
-  if (!executionQuality) {
-    return '';
-  }
-  return [
-    ['goal: ', pick(executionQuality.goalDrivenExecution, [0, 1])],
-    ['scope: ', pick(executionQuality.simplicityAndScope, [0])],
-    ['assumption: ', pick(executionQuality.assumptionDiscipline, [1])]
-  ]
-    .map(([prefix, items]) => summarizeList(items, prefix))
-    .filter(Boolean)
-    .join('\n');
-}
-
-function summarizeRunControl(runControl) {
-  if (!runControl) {
-    return '';
-  }
-  return [
-    ['goal: ', pick(runControl.goalDrivenRunControl, [0, 2, 3])],
-    ['delegate: ', pick(runControl.delegationPolicy, [0, 3])],
-    ['runtime: ', pick(runControl.runtimeExecutionPolicy, [0, 1, 2, 5])],
-    ['audit: ', pick(runControl.completionAudit, [0, 1, 3])]
-  ]
-    .map(([prefix, items]) => summarizeList(items, prefix))
-    .filter(Boolean)
-    .join('\n');
-}
-
-function isTemplatePlaceholder(value) {
-  return /^\{\{[A-Z0-9_]+\}\}$/.test(String(value ?? '').trim());
-}
-
-function templatePlaceholder(name) {
-  return `{${`{${name}}`}}`;
-}
-
-function extractOwner(raw) {
-  const owner = String(raw ?? '').match(/^Owner:\s+(.+)$/m)?.[1]?.trim() ?? '';
-  return owner && !isTemplatePlaceholder(owner) ? owner : '';
-}
-
-function extractLastUpdated(raw) {
-  return String(raw ?? '').match(/^Last Updated:\s+(\d{4}-\d{2}-\d{2})$/m)?.[1]?.trim() ?? '';
-}
-
-async function readOwnerFromFile(filePath) {
-  try {
-    return extractOwner(await fs.readFile(filePath, 'utf8'));
-  } catch {
-    return '';
-  }
-}
-
-async function resolveDocOwner(rootDir, outputPath) {
-  const candidates = [
-    path.join(rootDir, 'AGENTS.md'),
-    path.join(rootDir, 'README.md'),
-    path.join(rootDir, 'docs', 'README.md'),
-    outputPath
-  ];
-  for (const candidate of candidates) {
-    const owner = await readOwnerFromFile(candidate);
-    if (owner) {
-      return owner;
-    }
-  }
-  return templatePlaceholder('DOC_OWNER');
-}
-
-async function resolveLastUpdated(rootDir, outputPath) {
-  const candidates = [path.join(rootDir, 'AGENTS.md'), path.join(rootDir, 'README.md'), path.join(rootDir, 'docs', 'README.md'), outputPath];
-  for (const candidate of candidates) {
-    try {
-      const value = extractLastUpdated(await fs.readFile(candidate, 'utf8'));
-      if (value) return value;
-    } catch {
-      // Try the next canonical source.
-    }
-  }
-  return templatePlaceholder('LAST_UPDATED_ISO_DATE');
-}
-
-function buildContent(policy, today, docOwner) {
-  const entryPoints = policy?.docContract?.canonicalEntryPoints ?? [];
-  return `# Agent Runtime Context
-
-Status: generated
-Owner: ${docOwner}
-Last Updated: ${today}
-Source of Truth: Derived from AGENTS.md and docs/governance/policy-manifest.json.
-
-## Mission
-
-- Use canonical entrypoints to rebuild context quickly.
-- Follow the repo-local queue: \`docs/future/ -> docs/exec-plans/active/ -> docs/exec-plans/completed/\`.
-- Treat plans, docs, validation output, change summaries, and evidence as the durable memory system.
-- Keep agent-specific instructions subordinate to repo-local canonical docs.
-
-## Execution Model
-
-- mode: ${policy?.executionModel?.mode ?? 'manual-flat-queue'}
-${summarizeList(policy?.executionModel?.queue, 'queue: ')}
-${summarizeList(policy?.executionModel?.sourceOfTruth, 'source: ')}
-
-Canonical entrypoints:
-${entryPoints.map((entry) => `- \`${entry}\``).join('\n')}
-
-## Hard Safety Rules
-
-${summarizeRules(policy?.mandatorySafetyRules)}
-
-## Verification Profiles
-
-- fast: ${(policy?.validationPolicy?.fastIteration ?? []).join(' ; ')}
-- full: ${(policy?.validationPolicy?.fullGate ?? []).join(' ; ')}
-- repo health: ${(policy?.validationPolicy?.repoHealth ?? []).join(' ; ')}
-
-## Execution Quality
-
-${summarizeExecutionQuality(policy?.executionQuality)}
-
-## Run Control
-
-${summarizeRunControl(policy?.runControl)}
-
-## Memory Posture
-
-${summarizeList(pick(policy?.memoryPosture?.whatToDo, [0, 1, 2, 4]), 'do: ')}
-${summarizeList(pick(policy?.memoryPosture?.doNotAddYet, [0, 1]), 'not yet: ')}
-- safe rule: ${policy?.memoryPosture?.safeRule ?? 'Keep work state repo-local unless repeated failures prove otherwise.'}
-
-## Execution Checklist
-
-- Read \`AGENTS.md\`, \`README.md\`, the current plan when applicable, and the nearest live code before editing.
-- Translate the request into verifiable goals; for multi-step work, pair each step with its check.
-- Planning-only work stops in \`docs/future/\`.
-- Update canonical docs in the same slice when behavior, workflow, architecture, security, or reliability boundaries change.
-- Run the required validation commands and record evidence before closeout.
-
-Generated by \`npm run context:compile\`.
-`;
+function renderPlans(items, directory) {
+  if (!items.length) return `No unfinished plans in \`${directory}\`.`;
+  const rows = items.slice(0, 8).map(p => `| \`${cell(p.id)}\` | ${cell(p.status)} | ${p.remaining} | ${cell(p.dependencies)} | ${cell(p.approval)} | \`${p.relative}\` |`);
+  return ['| Plan | Status | Remaining | Dependencies | Approval | Read |', '| --- | --- | --- | --- | --- | --- |', ...rows,
+    ...(items.length > 8 ? [`\n${items.length - 8} additional plans are omitted. Inspect \`${directory}\` before selecting work.`] : [])].join('\n');
 }
 
 async function main() {
-  const options = parseArgs(process.argv.slice(2));
-  const rootDir = process.cwd();
-  const output = resolveSafeRepoPath(rootDir, String(options.output ?? DEFAULT_OUTPUT_PATH), 'Context output path');
-  const policy = resolveSafeRepoPath(rootDir, String(options.policy ?? DEFAULT_POLICY_PATH), 'Policy input path');
-  const policyJson = await readJson(policy.abs);
-  const lastUpdated = await resolveLastUpdated(rootDir, output.abs);
-  const docOwner = await resolveDocOwner(rootDir, output.abs);
-  const content = buildContent(policyJson, lastUpdated, docOwner);
+  const [agents, state, active, future] = await Promise.all([
+    read('AGENTS.md'), read(statePath), plans('docs/exec-plans/active', ACTIVE_STATUSES), plans('docs/future', FUTURE_STATUSES)
+  ]);
+  const owner = agents.match(/^Owner:\s+(.+)$/m)?.[1] ?? null;
+  const updated = state.match(/^Last Updated:\s+(.+)$/m)?.[1] ?? null;
+  if (!owner || !updated) throw new Error('Context sources need Owner and Last Updated metadata.');
+  const date = state.match(/^Current State Date:\s+(.+)$/m)?.[1] ?? 'unknown';
+  const inputHash = digest(JSON.stringify([agents, state, ...active.map(p => [p.relative, p.content]), ...future.map(p => [p.relative, p.content])]));
+  const content = `# Project Context Index
+
+Status: generated
+Owner: ${owner}
+Last Updated: ${updated}
+Source of Truth: AGENTS.md, ${statePath}, and unfinished plan files.
+Input SHA256: ${inputHash}
+
+## Start Here
+
+Read \`AGENTS.md\` and \`${statePath}\`, then the requested plan and nearest live code.
+Snapshot verification date: ${date}. This is a human-maintained claim, not proof of live behavior.
+Snapshot SHA256: ${digest(state)}
+Do not load historical plans, raw logs, or every policy file by default.
+This index describes recorded work. It does not authorize execution or prove that an undocumented feature exists.
+
+## Active Work
+
+${renderPlans(active, 'docs/exec-plans/active')}
+
+## Proposed Work
+
+${renderPlans(future, 'docs/future')}
+
+A draft is plan-only. Read the complete plan, dependencies, approvals, and current user request before implementation.
+Completed work is excluded. If a shipped feature remains in the queue, reconcile it against code and evidence before acting.
+
+## Resume And Close
+
+Use the active plan's single continuation section for decisions, approvals, changed paths, validation, blockers, and next action.
+Replace obsolete product-state statements and remove resolved gaps. Move completed plans out of the active queue.
+Regenerate with \`npm run context:compile\`. Verify without writes with \`npm run context:check\`.
+`;
+  await assertContained(output);
+  if (args.includes('--check')) {
+    if (await fs.readFile(output.abs, 'utf8') !== content) throw new Error('Generated context is stale. Run npm run context:compile after updating product state and plans.');
+    console.log('[context:check] current.');
+    return;
+  }
   await fs.mkdir(path.dirname(output.abs), { recursive: true });
-  await fs.writeFile(output.abs, content, 'utf8');
-  console.log(`[context:compile] wrote ${output.rel}`);
+  await fs.writeFile(output.abs, content);
+  console.log(`[context:compile] wrote ${output.rel} (${active.length} active, ${future.length} proposed plans).`);
 }
 
-main().catch((error) => {
-  console.error('[context:compile] failed.');
-  console.error(error instanceof Error ? error.stack : String(error));
-  process.exit(1);
+main().catch(error => {
+  console.error(`[context:compile] ${error.message}`);
+  process.exitCode = 1;
 });

@@ -1,7 +1,8 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { parseMustLandChecklist, parseMetadata, metadataValue as planMetadataValue } from '../../automation/lib/plan-metadata.mjs';
 
-const DOC_REF_IN_CODE_REGEX = /`(AGENTS\.md|README\.md|ARCHITECTURE\.md|docs\/[A-Za-z0-9_./-]+\.(?:md|MD|json|ya?ml))`/g;
+const DOC_REF_IN_CODE_REGEX = /`(AGENTS\.md|README\.md|ARCHITECTURE\.md|VISION\.md|docs\/[A-Za-z0-9_./-]+\.(?:md|MD|json|ya?ml))`/g;
 const MD_LINK_REGEX = /\[[^\]]*\]\(([^)]+)\)/g;
 
 function toPosix(value) {
@@ -98,7 +99,7 @@ function normalizeRef(rawRef, sourceFile) {
     return toPosix(noHash.slice(1));
   }
 
-  if (/^(?:AGENTS\.md|README\.md|ARCHITECTURE\.md|docs\/)/.test(noHash)) {
+  if (/^(?:AGENTS\.md|README\.md|ARCHITECTURE\.md|VISION\.md|docs\/)/.test(noHash)) {
     return toPosix(path.normalize(noHash));
   }
 
@@ -321,7 +322,8 @@ export async function runGovernanceAnalysis({
   );
   const markdownFilesRel = markdownFilesAbs
     .map((entry) => toPosix(path.relative(rootDir, entry)))
-    .filter((rel) => !hasAnyPrefix(rel, markdownExcludePrefixes));
+    .filter((rel) => !hasAnyPrefix(rel, markdownExcludePrefixes) &&
+      !/^docs\/(?:future|exec-plans\/(?:active|completed))\/(?:.*\/)?evidence\//.test(rel));
 
   const explicitScanFilesRel = [
     'AGENTS.md',
@@ -358,6 +360,31 @@ export async function runGovernanceAnalysis({
     const abs = resolved.abs;
     if (!(await exists(abs))) {
       errors.push(makeFinding('error', 'MISSING_CANONICAL_DOC', `Missing canonical doc: ${resolved.rel}`, resolved.rel));
+    }
+  }
+
+  const budgets = config.sizeBudgets;
+  if (budgets) {
+    const excluded = normalizePrefixList(budgets.excludePrefixes);
+    const limits = budgets.limits ?? {};
+    if (!Number.isInteger(budgets.defaultMaxBytes) || budgets.defaultMaxBytes <= 0 ||
+        !isPlainObject(limits) || Object.values(limits).some(value => !Number.isInteger(value) || value <= 0)) {
+      errors.push(makeFinding('error', 'INVALID_DOC_BUDGET', 'Documentation byte budgets must be positive integers.'));
+    } else {
+      for (const [file, content] of contents) {
+        if (!file.endsWith('.md') || hasAnyPrefix(file, excluded)) continue;
+        const limit = limits[file] ?? budgets.defaultMaxBytes;
+        const bytes = Buffer.byteLength(content, 'utf8');
+        if (bytes > limit) errors.push(makeFinding('error', 'DOC_SIZE_BUDGET',
+          `${bytes} UTF-8 bytes exceeds ${limit}. Replace obsolete claims and link detailed contracts; preserve historical evidence.`, file));
+        if ((file.startsWith('docs/future/') || file.startsWith('docs/exec-plans/active/')) && path.basename(file) !== 'README.md' && !file.split('/').includes('evidence')) {
+          const items = parseMustLandChecklist(content);
+          const awaitingValidation = file.startsWith('docs/exec-plans/active/') &&
+            ['validation', 'in-review'].includes(planMetadataValue(parseMetadata(content), 'Status'));
+          if (items.length && items.every(item => item.checked) && !awaitingValidation) errors.push(makeFinding('error', 'FINISHED_PLAN_IN_QUEUE',
+            'No unchecked must-land items remain. Close or correct this plan and update current product state.', file));
+        }
+      }
     }
   }
 
@@ -529,9 +556,10 @@ export async function runGovernanceAnalysis({
           continue;
         }
         if (age > maxAgeDays) {
-          errors.push(
+          const level = staleness.level === 'warning' ? 'warning' : 'error';
+          (level === 'warning' ? warnings : errors).push(
             makeFinding(
-              'error',
+              level,
               'STALE_DOC',
               `Stale document (${age} days): ${filePath} (max ${maxAgeDays})`,
               filePath
@@ -617,18 +645,16 @@ export async function runGovernanceAnalysis({
     const completedDirRel = completedPlansConfig.directory;
     const completedDir = resolveConfigPath(rootDir, completedDirRel, errors, 'OUT_OF_REPO_COMPLETED_PLAN_DIR', 'Completed plans directory');
     const completedDirAbs = completedDir?.abs;
-    let entries = [];
     try {
-      entries = completedDirAbs ? await fs.readdir(completedDirAbs, { withFileTypes: true }) : [];
+      if (completedDirAbs) await fs.readdir(completedDirAbs);
     } catch {
       errors.push(makeFinding('error', 'MISSING_COMPLETED_PLAN_DIR', `Missing completed plans directory: ${completedDirRel}`, completedDirRel));
-      entries = [];
     }
 
     const exclude = new Set(completedPlansConfig.excludeFiles ?? ['README.md']);
-    const completedFiles = entries
-      .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith('.md') && !exclude.has(entry.name))
-      .map((entry) => `${completedDirRel}/${entry.name}`);
+    const completedFiles = completedDirAbs ? (await walkMarkdownFiles(completedDirAbs))
+      .filter(file => !exclude.has(path.basename(file)) && !path.relative(completedDirAbs, file).split(path.sep).includes('evidence'))
+      .map(file => toPosix(path.relative(rootDir, file))).sort() : [];
 
     for (const filePath of completedFiles) {
       const content = contents.get(filePath) ?? (await fs.readFile(path.join(rootDir, filePath), 'utf8'));

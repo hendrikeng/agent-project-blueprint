@@ -58,9 +58,11 @@ test('Git closeout preserves inherited work across commits and validates both st
   };
   await fs.cp(scripts, path.join(root, 'scripts/automation'), { recursive: true });
   const active = 'docs/exec-plans/active/topic/unrelated\tü.md';
-  const completed = 'docs/exec-plans/completed/unrelated.md';
+  const completed = 'docs/exec-plans/completed/topic/unrelated.md';
   const evidence = 'docs/exec-plans/evidence-index/unrelated.md';
+  const fullContent = '# Fixture\n\n## Metadata\n\n- Plan-ID: unrelated\n- Status: active\n- Priority: p1\n- Owner: Platform\n- Acceptance-Criteria: Session boundary holds.\n- Delivery-Class: product\n- Dependencies: none\n- Spec-Targets: docs/spec.md\n- Implementation-Targets: src/auth/session.ts\n- Risk-Tier: high\n- Validation-Lanes: always\n- Security-Approval: not-required\n- Done-Evidence: '+evidence+'\n\n## Already-True Baseline\nExisting session boundary.\n\n## Must-Land Checklist\n\n- [x] `ml-fixture` Fixture proof.\n\n## Deferred Follow-Ons\nNone.\n\n## Closure\nAcceptance complete.\n\n## Validation Evidence\nSession boundary check passed.\n';
   const content = '# Fixture\n\n## Metadata\n\n- Plan-ID: unrelated\n- Status: active\n- Security-Approval: not-required\n- Done-Evidence: '+evidence+'\n\n## Must-Land Checklist\n\n- [x] `ml-fixture` Fixture proof.\n';
+  await write('docs/exec-plans/completed/history/2026-03-16-shipped-foundation.md', 'Status: completed\n## Closure\nShipped foundation.\n## Validation Evidence\nHistorical check passed.\n');
   await write(active, content);
   await write('src/auth/session.ts', 'export const sensitive = true;\n');
   // Historical receipts are retained as data, never interpreted as current authority.
@@ -104,11 +106,32 @@ test('Git closeout preserves inherited work across commits and validates both st
   await fs.rm(path.join(root, active));
   git('add', active);
   fail(/matching completed Plan-ID/);
-  const closedContent = content.replace('Status: active', 'Status: completed');
+  const closedContent = fullContent.replace('Status: active', 'Status: completed').replace('Dependencies: none', 'Dependencies: shipped-foundation');
   await write(completed, closedContent);
   await write(evidence, '# Fixture evidence\n');
   git('add', completed, evidence);
   pass();
+  for (const [remove, expected] of [
+    ['- Owner: Platform\n', /MISSING_METADATA_FIELD.*Owner/],
+    ['- Acceptance-Criteria: Session boundary holds.\n', /MISSING_METADATA_FIELD.*Acceptance-Criteria/],
+    ['- Implementation-Targets: src/auth/session.ts\n', /MISSING_IMPLEMENTATION_TARGETS/],
+    ['- Validation-Lanes: always\n', /MISSING_VALIDATION_LANES/],
+    ['## Closure\nAcceptance complete.\n\n', /MISSING_COMPLETION_SECTION.*Closure/],
+    ['## Validation Evidence\nSession boundary check passed.\n', /MISSING_COMPLETION_SECTION.*Validation Evidence/]
+  ]) {
+    const incomplete = closedContent.replace(remove, '');
+    await write(completed, incomplete);
+    git('add', completed);
+    await write(completed, closedContent);
+    fail(expected);
+    git('add', completed);
+    await write(completed, incomplete);
+    fail(expected);
+    await write(completed, closedContent);
+  }
+  await write(completed, closedContent.replace('Dependencies: shipped-foundation', 'Dependencies: missing-foundation'));
+  fail(/UNKNOWN_DEPENDENCY/);
+  await write(completed, closedContent);
   await write(completed, closedContent.replace('[x]', '[ ]'));
   git('add', completed);
   await write(completed, closedContent);

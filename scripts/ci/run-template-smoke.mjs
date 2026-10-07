@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import fs from 'node:fs/promises';
+import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -12,10 +13,6 @@ const placeholderPattern = /\{\{([A-Z0-9_]+)\}\}/g;
 
 function nowIsoDate() {
   return new Date().toISOString().slice(0, 10);
-}
-
-function toPosix(value) {
-  return String(value).replaceAll(path.sep, '/');
 }
 
 async function collectFiles(baseDir) {
@@ -220,30 +217,53 @@ function runCommand(repoDir, command, extraEnv = {}) {
 
 async function main() {
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'harness-template-smoke-'));
-  const repoDir = path.join(tempRoot, 'repo');
-  await fs.cp(templateDir, repoDir, { recursive: true });
-  await replaceTemplatePlaceholders(repoDir);
-  await writePackageJson(repoDir);
-  await assertPullRequestTemplatesMatchVerifier(repoDir);
-  await runFixtureEvals(repoDir);
+  try {
+    const repoDir = path.join(tempRoot, 'repo');
+    await fs.cp(templateDir, repoDir, { recursive: true });
+    await replaceTemplatePlaceholders(repoDir);
+    await writePackageJson(repoDir);
+    await assertPullRequestTemplatesMatchVerifier(repoDir);
+    await runFixtureEvals(repoDir);
 
-  const commands = [
-    'npm run harness:verify',
-    'npm run plans:verify',
-    'npm run context:compile',
-    'npm run eval:refresh',
-    'npm run verify:fast',
-    'npm run bootstrap:cleanup',
-    'npm run harness:verify'
-  ];
+    const commands = [
+      'npm run harness:verify',
+      'npm run plans:verify',
+      'npm run context:compile',
+      'npm run eval:refresh',
+      'npm run verify:fast',
+      'npm run bootstrap:cleanup',
+      'npm run harness:verify'
+    ];
 
-  for (const command of commands) {
-    runCommand(repoDir, command, { CI: '1' });
+    for (const command of commands) {
+      runCommand(repoDir, command, { CI: '1' });
+    }
+    await assertBootstrapArtifactsRemoved(repoDir);
+    await assertPackageJsonDriftFails(repoDir);
+    const visionPath = path.join(repoDir, 'VISION.md');
+    const readmePath = path.join(repoDir, 'README.md');
+    const originalVision = await fs.readFile(visionPath, 'utf8');
+    const originalReadme = await fs.readFile(readmePath, 'utf8');
+    try {
+      await fs.writeFile(visionPath, originalVision.split('\n').slice(0, 5).join('\n') +
+        '\nSource of Truth: README.md#product-direction\n');
+      await fs.writeFile(readmePath, originalReadme + '\n## Product Direction\n\nHelp readers organize their saved articles.\n');
+      runCommand(repoDir, 'node scripts/agent-hardening/check-agent-hardening.mjs');
+      await fs.writeFile(readmePath, originalReadme);
+      const missingDirection = spawnSync(process.execPath, ['scripts/agent-hardening/check-agent-hardening.mjs'],
+        { cwd: repoDir, encoding: 'utf8' });
+      assert.equal(missingDirection.status, 1);
+      assert.match(missingDirection.stderr, /MISSING_DIRECTION/);
+    } finally {
+      await fs.writeFile(visionPath, originalVision);
+      await fs.writeFile(readmePath, originalReadme);
+    }
+
+
+  } finally {
+    await fs.rm(tempRoot, { recursive: true, force: true });
   }
-  await assertBootstrapArtifactsRemoved(repoDir);
-  await assertPackageJsonDriftFails(repoDir);
-
-  console.log(`[template-smoke] passed (${toPosix(repoDir)})`);
+  console.log('[template-smoke] passed.');
 }
 
 main().catch((error) => {

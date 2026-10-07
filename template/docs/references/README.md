@@ -1,18 +1,10 @@
-# References Index
+# References
 
 Status: canonical
 Owner: {{DOC_OWNER}}
 Last Updated: {{LAST_UPDATED_ISO_DATE}}
 Source of Truth: This document.
 
-## Reference Inventory
-
-- Keep framework and platform references in this directory.
-- Adopted repos should list repo-specific framework, vendor, or generated reference material here instead of relying on folder discovery alone.
-
-## Reference Rules
-
-- References are supporting material, not policy.
-- Canonical policy remains in governance/design/architecture docs.
-- Keep references small enough to load only when the active plan or nearest live code path needs that feature context.
-- If a reference starts carrying general rules, promote the rule to the canonical owner and link back here instead of duplicating it.
+List task-specific framework or vendor references here only when the project uses them.
+References support implementation. They do not override canonical policy.
+Load only the reference needed for the current task.

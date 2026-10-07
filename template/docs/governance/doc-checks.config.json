@@ -8,7 +8,8 @@
     "ARCHITECTURE.md",
     "docs/generated/article-conformance.json",
     "docs/generated/evals-report.json",
-    "docs/agent-hardening/evals.config.json"
+    "docs/agent-hardening/evals.config.json",
+    "VISION.md"
   ],
   "canonicalDocs": [
     "AGENTS.md",
@@ -70,7 +71,9 @@
     "docs/agent-hardening/evals.config.json",
     "docs/ops/automation/OUTCOMES.md",
     "docs/ops/automation/INTEROP_GITHUB.md",
-    "docs/ops/automation/LITE_QUICKSTART.md"
+    "docs/ops/automation/LITE_QUICKSTART.md",
+    "VISION.md",
+    "docs/agent-hardening/AGENT_LOOP.md"
   ],
   "requiredDirs": [
     "docs/agent-hardening",
@@ -122,31 +125,19 @@
   ],
   "requiredLinks": {
     "AGENTS.md": [
-      "ARCHITECTURE.md",
-      "README.md",
+      "docs/design-docs/ENGINEERING-INVARIANTS.md",
+      "docs/product-specs/CURRENT-STATE.md",
+      "docs/generated/AGENT-RUNTIME-CONTEXT.md",
       "docs/PLANS.md",
       "docs/README.md",
-      "docs/design-docs/ENGINEERING-INVARIANTS.md",
-      "docs/design-docs/GIT-SAFETY.md",
-      "docs/design-docs/UI-STANDARDS.md",
-      "docs/exec-plans/README.md",
-      "docs/governance/GOLDEN-PRINCIPLES.md",
-      "docs/governance/RULES.md",
-      "docs/agent-hardening/README.md",
-      "docs/agent-hardening/RUN_CONTROL.md",
-      "docs/MANIFEST.md",
-      "docs/product-specs/CURRENT-STATE.md",
-      "docs/ops/automation/README.md"
+      "docs/design-docs/GIT-SAFETY.md"
     ],
     "README.md": [
       "AGENTS.md",
       "ARCHITECTURE.md",
-      "docs/MANIFEST.md",
-      "docs/PLANS.md",
-      "docs/agent-hardening/README.md",
-      "docs/agent-hardening/RUN_CONTROL.md",
+      "docs/README.md",
       "docs/product-specs/CURRENT-STATE.md",
-      "docs/ops/automation/README.md"
+      "docs/governance/project-gates.json"
     ],
     "docs/MANIFEST.md": [
       "docs/agent-hardening/",
@@ -159,16 +150,10 @@
       "docs/ui/README.md"
     ],
     "docs/README.md": [
-      "docs/ops/README.md",
-      "docs/ops/automation/README.md",
-      "docs/governance/README.md",
-      "docs/governance/RULES.md",
-      "docs/governance/policy-manifest.json",
-      "docs/agent-hardening/RUN_CONTROL.md",
-      "docs/product-specs/README.md",
+      "docs/design-docs/ENGINEERING-INVARIANTS.md",
       "docs/product-specs/CURRENT-STATE.md",
-      "docs/references/README.md",
-      "docs/ui/README.md"
+      "docs/PLANS.md",
+      "docs/governance/README.md"
     ],
     "docs/generated/README.md": [
       "docs/generated/AGENT-RUNTIME-CONTEXT.md",
@@ -226,9 +211,7 @@
     ],
     "docs/QUALITY_SCORE.md": [
       "Scoring Legend",
-      "Engineering Quality Bar",
-      "Periodic Rubric",
-      "Review Cadence"
+      "Periodic Rubric"
     ],
     "docs/agent-hardening/README.md": [
       "Why This Exists",
@@ -265,6 +248,12 @@
       "Current State",
       "Required Contents When Active",
       "Rules"
+    ],
+    "docs/product-specs/CURRENT-STATE.md": [
+      "Current Product Surface",
+      "Current Gaps",
+      "Current Risks And Open Questions",
+      "Snapshot Maintenance"
     ]
   },
   "metadataRules": [
@@ -389,59 +378,16 @@
     }
   ],
   "staleness": {
-    "maxAgeDays": 90,
+    "maxAgeDays": 30,
     "defaultStrategy": {
       "type": "metadata_field",
-      "field": "Last Updated",
+      "field": "Current State Date",
       "format": "iso-date"
     },
     "targets": [
-      "AGENTS.md",
-      "ARCHITECTURE.md",
-      "README.md",
-      "docs/DESIGN.md",
-      "docs/FRONTEND.md",
-      "docs/BACKEND.md",
-      "docs/agent-hardening/README.md",
-      "docs/agent-hardening/EVALS.md",
-      "docs/agent-hardening/OBSERVABILITY.md",
-      "docs/agent-hardening/RUN_CONTROL.md",
-      "docs/agent-hardening/TOOL_POLICY.md",
-      "docs/agent-hardening/MEMORY_CONTEXT.md",
-      "docs/PLANS.md",
-      "docs/PRODUCT_SENSE.md",
-      "docs/QUALITY_SCORE.md",
-      "docs/README.md",
-      "docs/RELIABILITY.md",
-      "docs/SECURITY.md",
-      "docs/architecture/README.md",
-      "docs/architecture/DEPENDENCY-RULES.md",
-      "docs/architecture/LAYERS.md",
-      "docs/design-docs/CORE-BELIEFS.md",
-      "docs/design-docs/ENGINEERING-INVARIANTS.md",
-      "docs/design-docs/GIT-SAFETY.md",
-      "docs/design-docs/README.md",
-      "docs/design-docs/UI-STANDARDS.md",
-      "docs/env/README.md",
-      "docs/exec-plans/README.md",
-      "docs/exec-plans/active/README.md",
-      "docs/exec-plans/completed/README.md",
-      "docs/exec-plans/TECH-DEBT-TRACKER.md",
-      "docs/future/README.md",
-      "docs/governance/README.md",
-      "docs/governance/GOLDEN-PRINCIPLES.md",
-      "docs/governance/RULES.md",
-      "docs/MANIFEST.md",
-      "docs/ops/README.md",
-      "docs/ops/automation/README.md",
-      "docs/product-specs/CURRENT-STATE.md",
-      "docs/product-specs/README.md",
-      "docs/references/README.md",
-      "docs/ui/INTENTS.md",
-      "docs/ops/automation/OUTCOMES.md",
-      "docs/ops/automation/INTEROP_GITHUB.md",
-      "docs/ops/automation/LITE_QUICKSTART.md"
-    ]
+      "docs/product-specs/CURRENT-STATE.md"
+    ],
+    "level": "warning"
   },
   "activePlans": {
     "directory": "docs/exec-plans/active",
@@ -515,5 +461,20 @@
   "unreachablePolicy": {
     "scope": "canonical",
     "level": "error"
+  },
+  "sizeBudgets": {
+    "defaultMaxBytes": 16000,
+    "limits": {
+      "AGENTS.md": 6000,
+      "README.md": 8000,
+      "docs/product-specs/CURRENT-STATE.md": 12000,
+      "docs/generated/AGENT-RUNTIME-CONTEXT.md": 16000
+    },
+    "excludePrefixes": [
+      "docs/exec-plans/completed/",
+      "docs/exec-plans/evidence-index/",
+      "docs/exec-plans/active/evidence/",
+      "docs/references/"
+    ]
   }
 }

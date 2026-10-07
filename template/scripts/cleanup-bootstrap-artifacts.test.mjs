@@ -44,8 +44,9 @@ async function replacePlaceholders(rootDir) {
   }
 }
 
-test('bootstrap cleanup removes one-time helper files after scripts are merged', async () => {
-  const rootDir = await createTemplateRepo();
+test('bootstrap cleanup removes one-time helper files after scripts are merged', async (t) => {
+  const rootDir = await createTemplateRepo(t);
+
   await replacePlaceholders(rootDir);
 
   const result = runNode(path.join(rootDir, 'scripts', 'cleanup-bootstrap-artifacts.mjs'), [], rootDir);
@@ -70,8 +71,9 @@ test('bootstrap cleanup removes one-time helper files after scripts are merged',
   assert.equal(packageJson.scripts['bootstrap:cleanup'], undefined);
 });
 
-test('bootstrap cleanup prunes stale helper ownership from the downstream manifest', async () => {
-  const rootDir = await createTemplateRepo();
+test('bootstrap cleanup prunes stale helper ownership from the downstream manifest', async (t) => {
+  const rootDir = await createTemplateRepo(t);
+
   await replacePlaceholders(rootDir);
 
   const manifestPath = path.join(rootDir, 'docs', 'ops', 'automation', 'harness-manifest.json');
@@ -117,8 +119,9 @@ test('bootstrap cleanup prunes stale helper ownership from the downstream manife
   );
 });
 
-test('bootstrap cleanup refuses to remove script fragment before it is merged', async () => {
-  const rootDir = await createTemplateRepo();
+test('bootstrap cleanup refuses to remove script fragment before it is merged', async (t) => {
+  const rootDir = await createTemplateRepo(t);
+
   await replacePlaceholders(rootDir);
 
   const packageJsonPath = path.join(rootDir, 'package.json');
@@ -132,4 +135,26 @@ test('bootstrap cleanup refuses to remove script fragment before it is merged', 
   assert.match(String(result.stderr), /has not been fully merged/);
   await fs.access(path.join(rootDir, 'PLACEHOLDERS.md'));
   await fs.access(path.join(rootDir, 'package.scripts.fragment.json'));
+});
+
+test('bootstrap cleanup rejects symlinked write and removal targets before changes', async (t) => {
+  for (const relative of ['package.json', 'docs/ops/automation', 'scripts/bootstrap-verify.sh']) {
+    await t.test(relative, async (t) => {
+      const rootDir = await createTemplateRepo(t);
+
+      await replacePlaceholders(rootDir);
+      const target = path.join(rootDir, relative);
+      const external = `${rootDir}-external`;
+      t.after(() => fs.rm(external, { recursive: true, force: true }));
+      await fs.rename(target, external);
+      await fs.symlink(external, target);
+      const packageBefore = await fs.readFile(path.join(rootDir, 'package.json'), 'utf8');
+      const result = runNode(path.join(rootDir, 'scripts/cleanup-bootstrap-artifacts.mjs'), [], rootDir);
+      assert.equal(result.status, 1);
+      assert.match(String(result.stderr), /contains a symlink/);
+      assert.equal(await fs.readFile(path.join(rootDir, 'package.json'), 'utf8'), packageBefore);
+      await fs.access(path.join(rootDir, 'PLACEHOLDERS.md'));
+      await fs.lstat(external);
+    });
+  }
 });

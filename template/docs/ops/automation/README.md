@@ -5,96 +5,24 @@ Owner: {{DOC_OWNER}}
 Last Updated: {{LAST_UPDATED_ISO_DATE}}
 Source of Truth: This document.
 
-This directory defines how planned engineering work moves from intent to implementation-quality evidence.
-
-Treat `docs/ops/automation/LITE_QUICKSTART.md` as the simplest day-to-day workflow reference.
-
-## Goals
-
-- Keep upcoming, active, and completed work easy to inspect.
-- Continue current active work before starting more.
-- Make implementation scope explicit before code changes.
-- Keep docs, tests, validation, and evidence aligned with the change.
-- Make review focus on code quality, correctness, security, reliability, and user impact.
-- Preserve enough repo-local context for a fresh agent or engineer to resume safely.
-- Let runtime-native goals, subagents, hooks, guardrails, traces, and background runs accelerate execution without making them mandatory workflow infrastructure.
-
 ## Queue Model
 
-- `docs/future/`: proposed upcoming work not yet executing.
-- `docs/exec-plans/active/`: current execution state and in-progress work.
-- `docs/exec-plans/completed/`: completed execution plans and closure records.
-- `docs/exec-plans/evidence-index/`: durable evidence summaries by plan ID.
-- One file equals one executable slice.
-- Larger initiatives are represented as multiple future files linked by `Dependencies`.
-- A `ready-for-promotion` future with clear targets and no unresolved dependency is the dispatchable unit for a separate human, agent, or subagent.
-
-## Source Of Truth
-
-- `AGENTS.md`: repo-level non-negotiables.
-- `docs/PLANS.md`: lifecycle and promotion discipline.
-- `docs/agent-hardening/RUN_CONTROL.md`: runtime-native goal/delegation rules and completion-audit contract.
-- Current future or active plan file: slice scope and must-land contract.
-- PR or change summary plus evidence index: review and closure record.
-- `docs/product-specs/CURRENT-STATE.md`: current product behavior snapshot.
-
-## Operating Loop
-
-1. Make the future slice decision-complete.
-2. Promote one slice into `docs/exec-plans/active/`.
-3. Implement the smallest safe change.
-4. Keep docs, validation notes, and evidence current.
-5. Run required checks.
-6. Review the change against the quality bar.
-7. Close the plan into `docs/exec-plans/completed/` and update the evidence index.
-
-## Execution Rules
-
-- Work one active slice at a time unless the user explicitly coordinates parallel work with disjoint file ownership.
-- Parallel agent work must start from separate ready futures or active plans with non-overlapping `Implementation-Targets`, explicit dependencies, and separate evidence.
-- Do not add a separate orchestration layer for normal development work when runtime-native run controls plus repo-local evidence can prove the same outcome.
-- Keep `Implementation-Targets`, `Risk-Tier`, `Validation-Lanes`, and `Security-Approval` truthful as scope changes.
-- Medium and high risk changes need review scrutiny before completion.
-- If the active slice becomes too broad, split follow-up work into `docs/future/` instead of expanding the plan indefinitely.
-- Do not treat chat history, terminal scrollback, or provider session state as durable workflow state.
+Proposed work lives in docs/future/. Executing work lives in docs/exec-plans/active/.
+Completed plans and evidence live in docs/exec-plans/completed/ and docs/exec-plans/evidence-index/.
+The generated context index shows unfinished work. It does not authorize execution or infer roadmap priority.
 
 ## Quality Review
 
-Review should look for:
+Inspect correctness, trust boundaries, failure recovery, applicable accessibility, and focused evidence.
+Use risk-based reviews at the repository's delivery boundary. Do not create repeated reviews for an unchanged bundle.
 
-- correctness bugs and behavioral regressions
-- data contract mismatches across layers
-- missing authorization, validation, or trust-boundary checks
-- unreliable retry, idempotency, recovery, or partial-failure behavior
-- inaccessible or unstable UI states
-- unnecessary abstractions, duplicate helpers, dead code, and unclear ownership
-- missing tests, screenshots, validation output, docs, or evidence
+## Closeout
 
-## Verification Profiles
+Update existing current-state facts and contracts. Remove resolved gaps and superseded limitations.
+Move the completed plan once. Keep one concise evidence record and link large artifacts.
+Run npm run context:compile and npm run docs:verify.
 
-- `npm run context:compile`
-- `npm run docs:verify`
-- `npm run architecture:verify`
-- `npm run agent:verify`
-- `npm run eval:refresh`
-- `npm run eval:verify`
-- `npm run harness:test`
-- `npm run plans:verify`
-- `npm run plans:repair` only when explicitly repairing stale plan references; verification profiles remain non-mutating.
-- `npm run harness:verify`
-- `npm run project:gates:verify`
-- `npm run verify:fast`
-- `npm run verify:full`
+## References
 
-Adopted projects should wire stack-specific lint, typecheck, build, database, browser, deployment, and test commands into these profiles when those surfaces exist.
-
-## Related Documents
-
-- `docs/ops/automation/LITE_QUICKSTART.md`
-- `docs/ops/automation/OUTCOMES.md`
-- `docs/ops/automation/INTEROP_GITHUB.md`
-- `docs/agent-hardening/RUN_CONTROL.md`
-- `docs/PLANS.md`
-- `docs/future/README.md`
-- `docs/exec-plans/README.md`
-- `docs/QUALITY_SCORE.md`
+Use `docs/PLANS.md` for lifecycle, `docs/exec-plans/README.md` for metadata, and `docs/agent-hardening/RUN_CONTROL.md` for delegation.
+Use `docs/ops/automation/INTEROP_GITHUB.md` only for GitHub workflow integration.

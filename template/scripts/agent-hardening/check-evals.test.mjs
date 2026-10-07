@@ -157,3 +157,37 @@ test('report paths cannot escape the repository', async (t) => {
   await writeJson(root, 'docs/agent-hardening/evals.config.json', config);
   assert.match(verify(root).stderr, /escapes repository root/);
 });
+
+test('time-bound integrity also requires current input identity for unrun reports', async (t) => {
+  const { root, config } = await fixture(t);
+  config.freshnessMode = 'time-bound';
+  config.maxAgeDays = 7;
+  await writeJson(root, 'docs/agent-hardening/evals.config.json', config);
+  await fs.appendFile(path.join(root, 'AGENTS.md'), 'Changed policy.\n');
+  assert.equal(verify(root, refreshPath).status, 0);
+  const run = () => spawnSync(process.execPath, [scriptPath, '--integrity-only'], { cwd: root, encoding: 'utf8' });
+  assert.equal(run().status, 0);
+  await fs.appendFile(path.join(root, 'AGENTS.md'), 'New policy after refresh.\n');
+  const stale = run();
+  assert.equal(stale.status, 1);
+  assert.match(stale.stderr, /inputSha256 does not match/);
+});
+
+test('eval integrity accepts honest unrun inputs while activation and fabricated evidence fail', async (t) => {
+  const { root, config, report } = await fixture(t);
+  await fs.appendFile(path.join(root, 'AGENTS.md'), 'Policy changed.\n');
+  assert.equal(spawnSync(process.execPath, [refreshPath], { cwd: root }).status, 0);
+  const unrun = JSON.parse(await fs.readFile(path.join(root, config.reportPath), 'utf8'));
+  assert.equal(unrun.status, 'not-run');
+  const integrity = spawnSync(process.execPath, [scriptPath, '--integrity-only'], { cwd: root, encoding: 'utf8' });
+  assert.equal(integrity.status, 0, integrity.stderr);
+  assert.match(integrity.stdout, /NOT evaluated/);
+  assert.equal(spawnSync(process.execPath, [scriptPath], { cwd: root }).status, 1);
+  unrun.suites[0].execution = report.suites[0].execution;
+  await writeJson(root, config.reportPath, unrun);
+  assert.equal(spawnSync(process.execPath, [scriptPath, '--integrity-only'], { cwd: root }).status, 1);
+  report.inputSha256 = unrun.inputSha256;
+  report.status = 'pass';
+  await writeJson(root, config.reportPath, report);
+  assert.equal(spawnSync(process.execPath, [scriptPath, '--integrity-only'], { cwd: root }).status, 1);
+});

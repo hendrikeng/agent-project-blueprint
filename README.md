@@ -2,7 +2,7 @@
 
 Status: canonical
 Owner: Platform Engineering
-Last Updated: 2026-08-18
+Last Updated: 2026-10-07
 Source of Truth: This directory.
 
 Reusable blueprint for bootstrapping high-quality agent-assisted software projects.
@@ -14,19 +14,22 @@ Reusable blueprint for bootstrapping high-quality agent-assisted software projec
 - `scripts/harness-sync.mjs` installs, updates, and checks that payload for drift in downstream repos. JSON output separates managed files, project-owned files, and bootstrap helpers.
 - `template/README.md` becomes the downstream repo root README after bootstrap.
 
-## Blueprint Principles
+## Context Model
 
-- The repository is the operating system for engineering work.
-- `VISION.md` makes product direction explicit before agents enter plans or code.
-- Canonical docs define current product state, architecture, standards, planning, and quality gates.
-- Non-trivial work is planned as one executable slice before implementation.
-- Code quality is protected through small scope, explicit contracts, focused validation, reviewable evidence, and automated checks.
-- The blueprint is agent-portable: any capable coding agent should be able to rebuild context from repo-local artifacts.
-- The blueprint deliberately avoids a mandatory orchestration runtime; runtime-native goals, subagents, hooks, guardrails, traces, and background work should plug into repo-local plans and evidence instead of replacing them.
-- Runtime task graphs are useful when two or more ready tasks have disjoint ownership. `template/docs/agent-hardening/RUN_CONTROL.md` defines the planning contract.
-- Draft and blocked plans remain plan-only. Execution requires an active slice with satisfied dependencies and approvals.
-- The runtime owns graph state and worker dispatch. The repository owns the approved plan, checks, evidence, and closeout.
-- External issue trackers, hosting providers, and deployment platforms are optional integrations, not harness requirements.
+A fresh agent reads `AGENTS.md` and `docs/product-specs/CURRENT-STATE.md`, then the requested plan and relevant code.
+The snapshot states what exists, what remains, and what is uncertain. Domain docs load only when needed.
+`VISION.md` records durable direction for product decisions. A small project can keep direction in README and use VISION as a pointer.
+Completed plans preserve history outside startup context. A continuation section preserves decisions and next actions across sessions.
+The blueprint works through repository files and deterministic checks. It does not require an orchestration runtime or a provider-specific memory system.
+
+Current-state updates replace obsolete facts and remove resolved gaps. They do not append a delivery narrative.
+UTF-8 size budgets prevent long single-line files from bypassing context limits. Freshness warnings request fact verification.
+The generated context index lists unfinished plans and detects changed source inputs without copying all policy into another prompt.
+Ordinary software gates check eval integrity. Strict `eval:verify` remains the separate agent activation gate; report refresh never runs evaluations.
+During adoption, verify that the installed client loads `AGENTS.md`. Existing provider entrypoints can change discovery.
+The [agent adoption guide](template/docs/agent-hardening/README.md#instruction-discovery-during-adoption) covers Codex overrides and Claude imports without duplicating policy.
+
+See the [template audit and migration guide](distribution/context-refresh.md) for the full file review, source guidance, limits, and existing-project reconciliation.
 
 ## Default Git Workflow
 
@@ -85,6 +88,9 @@ The distribution manifest separates harness-managed files from project-owned sta
 Install and adopt copy both groups. The installed manifest records them in `managedFiles` and `projectFiles`.
 Project-owned files include root product docs, project configuration, workflows, and generated reports. Updates do not overwrite or restore these files.
 Framework scripts and remaining framework docs stay harness-managed. Review upstream changes to project-owned files separately.
+`drift --json true` and `update --json true` report `projectUpdatesAvailable` by comparing upstream template hashes with the recorded source baseline.
+This list is advisory and does not authorize replacing local content. Save the drift report before update; update advances the source baseline.
+Older manifests with no project-file hashes report those upstream files for review.
 
 Configuration keeps the source-template hash (`sha256`) and the configured file hash (`configuredSha256`) for managed files.
 Updates compare managed files against the configured baseline. Local edits, deleted managed files, and preserved adoption conflicts stop the update.
@@ -99,16 +105,48 @@ node ./scripts/harness-sync.mjs update --target /path/to/existing-project
 
 ### Existing Project Migration
 
-This revision removes Nx-specific checks and adds explicit eval runtime identity. Existing project-owned configuration stays unchanged during updates.
+This revision changes startup context, verification scopes, and eval runtime identity. Updates preserve project-owned files and `package.json`.
+The script fragment is bootstrap-only. An update does not merge its new commands into an existing package.
 
-1. Remove the retired decisions: `ESLINT_CONFIG_PATH`, `SOURCE_TAG_*`, `ALLOWED_TARGET_TAG_*`, `PROJECT_JSON_PATH_*`, `PROJECT_REQUIRED_TAG_*`, and `EVAL_EVIDENCE_PATH_1`.
-2. Add approved values for `EVAL_RUNTIME_VERSION`, `EVAL_PROMPT_VERSION`, and `EVAL_TOOL_CONFIG_VERSION`.
-3. Replace `nx_dep_constraints` and `required_project_tags` checks with checks for the actual stack in `docs/governance/architecture-rules.json`.
-4. If no boundaries apply, record an empty `checks` array and a concrete `rationale`. This reports “not enforced,” not passing enforcement.
-5. Add `runtime` to `docs/agent-hardening/evals.config.json` with `provider`, `model`, `runtimeVersion`, `promptVersion`, and `toolConfigVersion` from the approved packet.
-6. Add repo-local prompt and tool configuration files to `additionalInputPaths` when those files affect agent behavior.
-7. Run the update command, refresh the eval report, and rerun the required evaluations.
-8. Record the evaluated `runtime` in the report. Run `npm run eval:verify`.
+1. Back up local edits. Capture `node ./scripts/harness-sync.mjs drift --target /path/to/existing-project --json true` before the update.
+   Save `projectUpdatesAvailable`. The update advances that advisory baseline. Resolve managed-file customizations without force overwrite.
+2. If the configured baseline is missing, use the baseline migration procedure below before the update.
+3. Remove retired decisions: `ESLINT_CONFIG_PATH`, `SOURCE_TAG_*`, `ALLOWED_TARGET_TAG_*`, `PROJECT_JSON_PATH_*`, `PROJECT_REQUIRED_TAG_*`, and `EVAL_EVIDENCE_PATH_1`.
+   If absent, add approved values for `EVAL_RUNTIME_VERSION`, `EVAL_PROMPT_VERSION`, and `EVAL_TOOL_CONFIG_VERSION`.
+4. Run `node ./scripts/harness-sync.mjs update --target /path/to/existing-project` from the updated blueprint checkout.
+5. Manually merge these required scripts into the target `package.json`. Preserve unrelated project commands.
+
+   ```json
+   {
+     "context:check": "node ./scripts/automation/compile-runtime-context.mjs --check",
+     "eval:integrity": "node ./scripts/agent-hardening/check-evals.mjs --integrity-only",
+     "project:gates:release": "node ./scripts/automation/check-project-gates.mjs --profile release --run"
+   }
+   ```
+
+   Compare all blueprint-owned commands with the updated `template/package.scripts.fragment.json` and merge any other missing or changed commands.
+6. Manually merge the changed project contracts from the updated templates. Keep local facts, instructions, gates, and design conventions.
+   - `AGENTS.md` and `docs/README.md`: startup reading, task-map routing, and the Engineering Invariants reference.
+   - `README.md` and `docs/product-specs/CURRENT-STATE.md`: current capabilities, source anchors, unresolved gaps, and snapshot maintenance.
+   - `docs/PLANS.md`, `docs/future/README.md`, and `docs/exec-plans/**`: remaining checklists, concise continuation, and evidence outside startup context.
+   - `docs/QUALITY_SCORE.md`, domain guides, `ARCHITECTURE.md`, and `VISION.md`: current contracts and direction rather than delivery narratives.
+   - `docs/ops/releases/release-mapping.md`: explicit release mapping for every plan-free implementation commit.
+7. Merge `docs/governance/doc-checks.config.json`: `sizeBudgets`, `markdownExcludePrefixes`, and current-state freshness rules.
+   Merge changed `requiredLinks`, `requiredHeadings`, and `metadataRules` for startup and snapshot documents. Preserve additional project checks.
+   Merge the generated index contract in `docs/generated/README.md`. Regenerate `AGENT-RUNTIME-CONTEXT.md` instead of copying its template output.
+8. Review `docs/governance/policy-manifest.json` and `docs/governance/project-gates.json` against local validation and authority boundaries.
+   Merge scoped verification into `.github/workflows/**` and `scripts/ci/**`. Harness sync preserves these project-owned files.
+9. Replace retired `nx_dep_constraints` and `required_project_tags` checks in `docs/governance/architecture-rules.json` with checks for the actual stack.
+   If no boundaries apply, record an empty `checks` array and a concrete `rationale`. This reports “not enforced.”
+10. Merge `runtime` into `docs/agent-hardening/evals.config.json`: `provider`, `model`, `runtimeVersion`, `promptVersion`, and `toolConfigVersion` from the approved packet.
+    If repo-local prompt or tool configuration files affect agent behavior, add them to `additionalInputPaths`.
+11. In the target repository, run `npm run harness:verify`, `npm run context:compile`, and `npm run eval:refresh`.
+    Then run `npm run context:check`, `npm run eval:integrity`, and `npm run verify:fast`, plus affected project checks.
+    Changed inputs invalidate previous eval results. A not-run report is valid for integrity, but it is not evaluation evidence.
+12. Before agent activation, record real evaluation execution evidence and the evaluated `runtime`. Run strict `npm run eval:verify`.
+
+See [the context migration details](distribution/context-refresh.md#existing-project-migration) for snapshot and queue maintenance.
+Do not rerun adoption or overwrite project files with templates to satisfy these contracts.
 
 Older manifests without a configured baseline stop with `CONFIGURED_BASELINE_MISSING`. To migrate that baseline first:
 
@@ -161,61 +199,43 @@ The current adoption workflow requires Node.js 24 and a `package.json` with an n
 
 The install copies `template/` into the target repository root. After install, paths lose the `template/` prefix: `template/PLACEHOLDERS.md` becomes `PLACEHOLDERS.md`, `template/AGENTS.md` becomes `AGENTS.md`, and `template/docs/...` becomes `docs/...`. `PLACEHOLDERS.md`, `package.scripts.fragment.json`, and the bootstrap verification/cleanup scripts are bootstrap-only helpers: they are copied for the first adoption pass but are not tracked as permanent harness-managed files. The sync manifest is written to `docs/ops/automation/harness-manifest.json`; downstream `.gitignore` is preserved.
 
-Then work inside the target repo:
-
-1. Use the planning kickoff prompt below to decide product scope, stack, invariants, placeholder values, gates, and first slices.
-2. Use the execution kickoff prompt to apply those decisions to the installed template.
-3. Merge `package.scripts.fragment.json` into the target `package.json`.
-4. Replace `docs/governance/project-gates.json` with real lint, typecheck, test, build, database, browser, deploy, and security gates, or mark missing gates with a concrete rationale.
-5. Run `npm run harness:verify`, `npm run context:compile`, and `npm run eval:refresh`. Run the required evaluations and record their execution evidence before `npm run verify:fast`. See `docs/agent-hardening/EVALS.md`.
-6. Run `npm run bootstrap:cleanup` after placeholders are replaced and package scripts are merged; cleanup removes the bootstrap inputs, bootstrap-only scripts/tests, and the two bootstrap package commands.
+Then configure the target with an approved decision packet through `scripts/bootstrap-configure.mjs` in the blueprint checkout.
+Use real project commands and facts from source. Mark absent surfaces explicitly; do not invent three domains or capabilities to fill fixed template slots.
+Configuration resolves placeholders. It does not establish useful project memory.
+Before adoption is complete, populate applicable canonical owners with verified facts and source anchors.
+Cover product behavior, architecture, stack, API/data contracts, security/privacy, reliability, validation, and deployed operations where applicable.
+For UI projects, include theme/token, shared-component, and interaction anchors in `docs/ui/README.md`.
+Mark absent domains not applicable. Record unresolved facts as owned questions.
+Keep implementation detail in source. Do not duplicate catalogs or create a document for each update.
+After configuration, run `npm run context:compile`, `npm run eval:refresh`, and `npm run verify:fast` in the target.
+Clean bootstrap helpers with `npm run bootstrap:cleanup` after successful configuration.
 
 ## Agent Quickstart Prompts
-
-Use these prompts when starting a new project from the blueprint.
 
 Planning kickoff:
 
 ```text
-This repository has just been initialized from the Agent Project Blueprint.
-We are inside the target repo now, and installed files may still contain {{...}} placeholders.
-Stay in planning mode. Do not edit files yet.
-
-Read VISION.md, AGENTS.md, PLACEHOLDERS.md, README.md, docs/PLANS.md, docs/QUALITY_SCORE.md, docs/governance/RULES.md, and the nearest existing code/package files if any.
-
-Produce a bootstrap decision packet:
-1. define what the product does, who it serves, and which outcomes matter,
-2. choose the stack, runtime, deployment posture, data model direction, and testing strategy,
-3. identify critical invariants for security, authorization, data integrity, lifecycle transitions, money/numeric behavior, and reliability,
-4. map every placeholder in PLACEHOLDERS.md to a project-specific value or an explicit not-applicable rationale,
-5. define the initial current-state, architecture, frontend, backend, security, reliability, and quality-score baseline that should be written during execution,
-6. identify the real project commands that should back docs/governance/project-gates.json,
-7. propose the first executable future slices with acceptance criteria, dependencies, validation lanes, evidence expectations, and risk tiers,
-8. call out any missing decision that blocks safe execution.
-
-Treat this as a production engineering blueprint: explicit contracts, small executable slices, strong defaults, proof-oriented validation, and no invented product behavior.
-Stop after the decision-complete planning output. Do not replace placeholders, merge package scripts, create product code, or run verification until I approve execution.
+Review this installed blueprint for the current project. This is planning-only; do not edit files.
+Read AGENTS.md, docs/product-specs/CURRENT-STATE.md, the bootstrap questionnaire, package configuration, and relevant source.
+Infer the product, actual stack, invariants, ownership, and real validation commands. Read VISION.md only if direction is needed.
+Produce a decision packet for bootstrap-configure.mjs. Name missing decisions; mark absent surfaces not applicable.
+Describe current capabilities and remaining gaps with source anchors. Propose a compact plan only for risky or multi-session work.
+Stop after the reviewable decision packet and migration summary.
 ```
 
 Execution kickoff:
 
 ```text
-Approved. Execute the bootstrap decision packet in this installed target repo.
-
-Assume the template has already been installed into the current repository root. If AGENTS.md, PLACEHOLDERS.md, package.scripts.fragment.json, or docs/governance/project-gates.json are missing, stop and report that the template install step has not happened.
-
-1. Replace all {{...}} placeholders in installed files using the approved decision packet; use PLACEHOLDERS.md as the temporary placeholder inventory during this pass.
-2. Merge package.scripts.fragment.json into package.json without deleting unrelated existing project scripts.
-3. Wire docs/governance/project-gates.json to real project commands for lint, typecheck, unit tests, build, and any applicable integration, migration, browser, security, release, or deploy checks.
-4. Run ./scripts/check-template-placeholders.sh until no unresolved placeholders remain outside the documented inventory.
-5. Run npm run harness:verify, npm run context:compile, and npm run eval:refresh. Run the required evaluations and record execution evidence under docs/agent-hardening/EVALS.md before running npm run docs:verify, npm run plans:verify, npm run project:gates:verify, and npm run verify:fast. Refresh alone never grants an eval pass.
-6. Create or update exactly one executable future or active slice from the approved first-slice plan.
-7. Implement only that slice if execution approval includes implementation; otherwise stop after verified bootstrap and slice creation.
-8. Update current-state docs, architecture/standards docs, validation evidence, and completed-plan closeout where the executed change requires it.
-9. Run npm run bootstrap:cleanup to remove bootstrap-only inputs, scripts, tests, and package commands after placeholders are clear and package scripts are merged.
-10. Run the strongest relevant verification available and report the exact commands and evidence.
-
-Keep the work agent-portable: any capable coding agent must be able to resume from repository-local docs, plans, code, validation output, and evidence.
+Apply the approved blueprint decision packet in this project. Preserve unrelated edits and existing project contracts.
+Use the blueprint's bootstrap-configure.mjs; do not reimplement placeholder replacement or overwrite conflicting package scripts.
+Populate applicable canonical owners with verified project facts and source anchors, including security/privacy and operational constraints.
+For UI projects, link theme/tokens, components, and interaction conventions in docs/ui/README.md.
+Mark absent domains not applicable. Record unresolved facts as owned questions. Configuration success alone does not complete adoption.
+Reconcile current state against source and tests. Replace obsolete claims and remove resolved gaps; preserve historical evidence outside live context.
+Wire real project gates. Create a plan only when risk, scope, or continuation needs it.
+After state and queue changes, run context:compile, eval:refresh, and verify:fast.
+An honest not-run eval report is valid for software integrity. Before agent activation, execute the configured suites and run eval:verify.
+Implement product work only when the request includes it. Complete the applicable checks and cleanup, then report remaining gaps truthfully.
 ```
 
 ## Root Commands

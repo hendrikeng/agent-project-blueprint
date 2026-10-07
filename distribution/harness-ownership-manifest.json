@@ -9,6 +9,7 @@
     "**/*"
   ],
   "projectOwnedGlobs": [
+    ".gitignore",
     "*.md",
     ".github/CODEOWNERS",
     ".github/workflows/**",
@@ -43,7 +44,6 @@
     "scripts/cleanup-bootstrap-artifacts.test.mjs"
   ],
   "excludeGlobs": [
-    ".gitignore",
     "docs/ops/automation/harness-manifest.json"
   ]
 }

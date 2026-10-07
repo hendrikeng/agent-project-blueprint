@@ -28,8 +28,9 @@ test('architecture checks report unwired boundaries and reject retired Nx checks
   }
 });
 
-test('walkTsFiles includes tsx sources and excludes test files', async () => {
+test('walkTsFiles includes tsx sources and excludes test files', async (t) => {
   const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), 'check-dependencies-'));
+  t.after(() => fs.rm(rootDir, { recursive: true, force: true }));
   await fs.mkdir(path.join(rootDir, 'src'), { recursive: true });
   await fs.writeFile(path.join(rootDir, 'src', 'view.tsx'), 'export const View = () => null;\n', 'utf8');
   await fs.writeFile(path.join(rootDir, 'src', 'logic.ts'), 'export const logic = 1;\n', 'utf8');

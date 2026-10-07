@@ -7,11 +7,7 @@ Source of Truth: This document.
 
 ## Scoring Legend
 
-- 5: strong and continuously enforced
-- 4: implemented with minor gaps
-- 3: baseline exists but needs hardening
-- 2: partial or inconsistent
-- 1: missing or largely manual
+Scores describe verified enforcement: 1 missing, 2 partial, 3 baseline, 4 implemented with small gaps, 5 continuously enforced.
 
 ## Domain Scores
 
@@ -25,44 +21,12 @@ Source of Truth: This document.
 - Documentation governance enforcement: {{SCORE_DOC_GOVERNANCE}}
 - Test coverage for critical flows: {{SCORE_CRITICAL_TESTS}}
 
-## Engineering Quality Bar
-
-A slice is high quality only when it clears all applicable gates:
-
-- `correctness`: behavior follows current schema, live code patterns, documented product state, and explicit user intent.
-- `contract`: boundary types, validation, authorization, persistence, and UI mapping are aligned across every touched layer.
-- `maintainability`: ownership is clear, files remain legible, abstractions reduce real complexity, and duplicate local helpers are not introduced.
-- `reliability`: important failure modes are handled deliberately, with retry, idempotency, fallback, rollback, or operator recovery where the workflow needs it.
-- `security`: sensitive data, privileged writes, API keys, external inputs, and external side effects remain server-authoritative and auditable.
-- `experience`: user-facing flows preserve scanability, accessibility, loading/error/empty states, and trustworthy labels or metadata.
-- `evidence`: validation output proves the changed behavior at the narrowest reliable surface, then the required gate proves repo-level consistency.
-
-Scores below 4 mean agents should bias toward smaller slices, stronger evidence, and simpler implementation choices until the gap is closed.
-
-## Score Update Rules
-
-- Update scores only when evidence changes, not because a plan intends to improve them.
-- Link score changes to completed plan evidence, CI output, architecture verification, eval reports, production observations, or explicit manual review notes.
-- Keep score explanations short and actionable: name the gap, owner surface, and next validation step.
-- Do not inflate scores when enforcement is still manual, intermittent, or limited to one route.
-
 ## Periodic Rubric
 
-Run `npm run quality:score` during regular maintenance, before release candidates, and after major agent-hardening or gate changes.
-
-The rubric flags:
-
-- stale canonical docs from `docs/governance/doc-checks.config.json`
-- weak or missing baseline gates from `docs/governance/project-gates.json`
-- missing required unit-test coverage gates
-- unclear canonical doc ownership
-- invalid or low domain/platform quality scores
-
-## Review Cadence
-
-- Revisit quality scores after major architecture changes, critical incident fixes, release-gate changes, or new agent-hardening eval results.
-- Scores should push work toward smaller, better-proven slices when the repo is below the expected bar.
-- A high score means the behavior is enforced and observable enough for future agents to trust it.
+Run `npm run quality:score` during scheduled maintenance or after a substantial gate change.
+This is an optional maintenance view, not proof that a feature works and not a per-edit requirement.
+Update scores only when evidence changes. Link the measured gap and its enforcement surface.
+Current product gaps belong in `docs/product-specs/CURRENT-STATE.md`; avoid duplicating their full details here.
 
 ## Current Gaps
 

@@ -71,12 +71,13 @@ const baselineGates = [
   }
 ];
 
-async function createFixtureRoot({
+async function createFixtureRoot(t, {
   quality = qualityDoc(),
   gates = baselineGates,
   agentOwner = 'Platform'
 } = {}) {
   const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), 'quality-score-'));
+  t.after(() => fs.rm(rootDir, { recursive: true, force: true }));
   await fs.mkdir(path.join(rootDir, 'docs', 'governance'), { recursive: true });
   await fs.writeFile(
     path.join(rootDir, 'AGENTS.md'),
@@ -137,8 +138,8 @@ async function createFixtureRoot({
   return rootDir;
 }
 
-test('quality score passes with fresh docs, concrete ownership, and baseline gates', async () => {
-  const rootDir = await createFixtureRoot();
+test('quality score passes with fresh docs, concrete ownership, and baseline gates', async (t) => {
+  const rootDir = await createFixtureRoot(t);
   const result = spawnSync('node', [scriptPath], { cwd: rootDir, encoding: 'utf8' });
 
   assert.equal(result.status, 0, result.stderr);
@@ -146,8 +147,8 @@ test('quality score passes with fresh docs, concrete ownership, and baseline gat
   assert.match(result.stdout, /passed/);
 });
 
-test('quality score fails stale docs', async () => {
-  const rootDir = await createFixtureRoot({
+test('quality score fails stale docs', async (t) => {
+  const rootDir = await createFixtureRoot(t, {
     quality: qualityDoc({ updated: '2000-01-01' })
   });
   const result = spawnSync('node', [scriptPath], { cwd: rootDir, encoding: 'utf8' });
@@ -156,8 +157,8 @@ test('quality score fails stale docs', async () => {
   assert.match(result.stderr, /STALE_/);
 });
 
-test('quality score fails when the unit-test gate is missing', async () => {
-  const rootDir = await createFixtureRoot({
+test('quality score fails when the unit-test gate is missing', async (t) => {
+  const rootDir = await createFixtureRoot(t, {
     gates: baselineGates.filter((gate) => gate.id !== 'unit-tests')
   });
   const result = spawnSync('node', [scriptPath], { cwd: rootDir, encoding: 'utf8' });
@@ -166,8 +167,8 @@ test('quality score fails when the unit-test gate is missing', async () => {
   assert.match(result.stderr, /MISSING_UNIT_TEST_GATE|MISSING_BASELINE_GATE/);
 });
 
-test('quality score requires the fixed six score labels', async () => {
-  const rootDir = await createFixtureRoot({
+test('quality score requires the fixed six score labels', async (t) => {
+  const rootDir = await createFixtureRoot(t, {
     quality: [
       '# Quality Score',
       '',
@@ -197,8 +198,8 @@ test('quality score requires the fixed six score labels', async () => {
   assert.match(result.stderr, /next: Add the missing required labels under Domain Scores or Platform Scores\./);
 });
 
-test('quality score ignores explanatory bullets outside score sections', async () => {
-  const rootDir = await createFixtureRoot({
+test('quality score ignores explanatory bullets outside score sections', async (t) => {
+  const rootDir = await createFixtureRoot(t, {
     quality: [
       qualityDoc(),
       '',
@@ -214,8 +215,8 @@ test('quality score ignores explanatory bullets outside score sections', async (
   assert.match(result.stdout, /score=100/);
 });
 
-test('quality score fails unclear ownership in adopted repos', async () => {
-  const rootDir = await createFixtureRoot({
+test('quality score fails unclear ownership in adopted repos', async (t) => {
+  const rootDir = await createFixtureRoot(t, {
     quality: qualityDoc({ owner: templatePlaceholder('DOC_OWNER') }),
     agentOwner: 'Platform'
   });
@@ -223,4 +224,24 @@ test('quality score fails unclear ownership in adopted repos', async () => {
 
   assert.equal(result.status, 1);
   assert.match(result.stderr, /UNCLEAR_QUALITY_OWNER|UNCLEAR_DOC_OWNER/);
+});
+
+
+test('quality scoring distinguishes explicit baseline exemptions from invalid skips', async (t) => {
+  for (const [status, command, rationale, expected] of [
+    ['deferred', '', 'Owner Platform will enable unit tests before feature delivery.', null],
+    ['not-applicable', '', 'This fixture contains no executable application surface.', null],
+    ['deferred', 'node -v', 'Owner Platform will enable unit tests before feature delivery.', /INVALID_GATE_EXEMPTION/],
+    ['deferred', '', 'Later', /INVALID_GATE_EXEMPTION/],
+    ['skip', '', 'This fixture contains no executable application surface.', /WEAK_BASELINE_GATE/]
+  ]) {
+    await t.test(status + ':' + command + ':' + rationale, async (t) => {
+      const gates = baselineGates.map(g => g.id === 'unit-tests' ? { ...g, status, command, rationale } : g);
+      const rootDir = await createFixtureRoot(t, { gates });
+      const result = spawnSync('node', [scriptPath], { cwd: rootDir, encoding: 'utf8' });
+      assert.equal(result.status, expected ? 1 : 0, result.stderr);
+      if (expected) assert.match(result.stderr, expected);
+      else assert.match(result.stdout + result.stderr, /EXEMPT_BASELINE_GATE/);
+    });
+  }
 });

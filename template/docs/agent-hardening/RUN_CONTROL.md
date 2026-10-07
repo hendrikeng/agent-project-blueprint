@@ -1,4 +1,4 @@
-# Agent Run Control
+# Run Control
 
 Status: canonical
 Owner: {{DOC_OWNER}}
@@ -7,64 +7,33 @@ Source of Truth: This document.
 
 ## Goal-Driven Run Control
 
-- Start each non-trivial run with the loop in `docs/agent-hardening/AGENT_LOOP.md`: vision, rules, code, plan, build, check, fix, evidence, close.
-- Treat a goal as the durable execution contract: user intent, acceptance criteria, constraints, validation path, current state, blockers, and completion evidence.
-- Prefer runtime-native goal, task, plan, session, trace, and background-run primitives when they improve reliability, but do not make any runtime session the repository source of truth.
-- Do not add a repo-local scheduler, custom agent chain, or orchestration daemon when runtime-native execution plus repo-local plans, checks, and evidence can carry the work.
-- Keep the repo-local plan and evidence authoritative for work that spans sessions, agents, branches, or pull requests.
-- Before editing, translate the request into the smallest verifiable outcome and identify the check that will prove it.
-- During execution, update the current plan, evidence, or docs whenever the goal boundary changes.
-- Stop and re-scope when the requested goal becomes multiple independent outcomes, requires new security approval, or no longer fits one executable slice.
-- Completion requires a prompt-to-artifact audit: map every explicit requirement to real evidence, then close only the items proven by code, docs, checks, screenshots, traces, or accepted manual evidence.
+An implementation request authorizes necessary bounded work within its scope.
+Keep the requested outcome and acceptance criteria explicit. Continue through focused checks and fixes.
+Ask only for decisions that materially change scope, contracts, or authorization.
+A conceptual goal does not require a runtime goal tool. Use native features only when available and authorized.
 
 ## Task Graph Planning
 
-- Use one direct run when the work is small, tightly coupled, or owned by one file area.
-- Use a task graph only when two or more ready tasks can make independent progress.
-- Define the objective, acceptance criteria, constraints, and final validation before you split the work.
-- Give each task a stable ID, one outcome, dependencies, write scope, relevant files, worker specialty, completion criteria, and validation.
-- Use dependency edges only for hard prerequisites. Keep the graph shallow and dispatch all ready independent tasks before you wait.
-- Assign one coordinator to own integration, conflict resolution, final validation, evidence, and closeout.
-- Do not let two active workers own the same files or contract surface.
-- If a task fails, replan or replace only that task. Do not repeat successful tasks without new evidence.
-- Use the runtime for graph state, dispatch, worker messages, and retries. Do not add a scheduler to the repository.
-- Keep the approved plan and durable results in repository-local plans and evidence.
-- If the objective names a future or active plan, read its status, dependencies, checklist, approval gates, and targets first.
-- Draft and blocked plans permit plan-only graphs. Do not dispatch implementation workers for them.
-- Promote a ready future through the repository workflow before execution. Execute only an active slice with satisfied dependencies and approvals.
-- If a future contains independent outcomes, split it into future files linked by `Dependencies`. Use graph tasks only inside one executable slice.
+Use parallel work only when scopes are independent and file ownership is disjoint.
+The runtime owns dispatch and messages. The repository owns plans and durable results.
+A draft or blocked plan does not authorize implementation. Read dependencies and approvals before dispatch.
 
 ## Delegation and Handoffs
 
-- Use delegation for bounded sidecar work that can run independently without blocking the immediate next local step.
-- Do not delegate the critical-path task when the next action depends on the result; keep urgent blocking work in the main run.
-- For parallel implementation, delegate by ready future or active plan, not by vague roadmap theme.
-- Each delegated task must name the expected output, allowed write scope, relevant files, validation expectation, and whether the worker may modify files.
-- Delegated agents are not a substitute for ownership. The main run remains responsible for integration, review, validation, and closeout.
-- Keep subagents focused: reviewer, tester, investigator, migrator, UI verifier, release checker, security reviewer, or similar single-purpose roles.
-- Grant delegated agents the narrowest practical tool access and forbid destructive, privileged, production, credential, branch, and publish actions unless the user approved that exact action.
-- Record meaningful handoff outputs in repo-local evidence, plans, or review notes; do not rely on hidden agent transcripts for future recovery.
-- When multiple agents touch code, use disjoint ownership boundaries and reconcile conflicts by reading current files, not by reverting unrelated work.
+Name the worker's outcome, edit scope, relevant files, validation, and publication limits.
+Pass applicable authorization and restrictions. A handoff does not grant broader permissions.
+One coordinator owns integration and final verification.
+Use the continuation section defined in `docs/agent-hardening/MEMORY_CONTEXT.md`.
 
 ## Runtime Execution Contract
 
-- Runtime-native execution machinery is optional; repo-local contracts, validation, and evidence remain mandatory.
-- Treat runtime-native goals, background tasks, automations, subagents, hooks, and traces as replaceable execution adapters, not as blueprint-owned orchestration.
-- Prefer deterministic checks, hooks, guardrails, typed tool schemas, and structured outputs over prompt-only reminders for repeatable safety constraints.
-- Use model handoffs or subagents only when the responsibility boundary is explicit and the receiving agent has enough context to succeed without inheriting irrelevant main-thread state.
-- Use tool-level validation for tool calls whenever possible; workflow-level input/output checks alone are not enough for delegated or multi-agent tool paths.
-- Preserve traceability for model calls, tool calls, handoffs, guardrails, approvals, file edits, and validation results in the run trace or evidence path.
-- Before pause, context compaction, background handoff, or agent handoff, preserve a continuation packet with objective, active plan, acceptance criteria, changed files, validation status, evidence paths, blockers, and next action.
-- In the continuation packet, include existing approvals, their source, scope, and expiry, plus actions that still require approval. Context compaction or handoff does not expand authorization. Do not ask again for an action whose approval remains valid. Delegated actions still follow `TOOL_POLICY.md`.
-- Autonomous or background execution is ready only when the goal contract, approval boundaries, project gates, traceability, and closeout evidence are explicit before the run starts.
-- Treat runtime memory, conversation state, encrypted reasoning items, background tasks, and compacted context as accelerators, not authority. Durable decisions must land in repo-local docs, plans, tests, manifests, or evidence.
-- If runtime behavior conflicts with repo policy, repo policy wins until an explicit canonical doc change lands.
+Runtime-native execution machinery is optional.
+System instructions, native permissions, and explicit user instructions take precedence over repository guidance.
+Do not bypass denials through another tool, worker, path, or mode.
+Use native controls for enforced restrictions. Documentation is guidance, not an access-control mechanism.
 
 ## Completion Audits
 
-- Restate the objective as concrete deliverables or success criteria before claiming completion.
-- Build a prompt-to-artifact checklist for every explicit requirement, named file, command, test, gate, and deliverable.
-- Inspect actual files, command output, test results, generated artifacts, evidence paths, and dirty worktree state for each checklist item.
-- Verify that passing tests, manifests, generated reports, or verifier output directly cover the objective before relying on them.
-- Mark uncertainty as incomplete. Do more verification, narrow the claim, or create a follow-up future slice with owner, rationale, and acceptance criteria.
-- Final status must separate completed evidence, residual risk, skipped validation, and follow-up work.
+Compare requested outcomes with actual changed files and validation results.
+Report completed, unverified, and blocked items truthfully.
+Remove finished work from the active queue. Do not restart a completed plan from historical context.

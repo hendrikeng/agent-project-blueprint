@@ -1,4 +1,5 @@
 import path from 'node:path';
+import fs from 'node:fs/promises';
 
 const SAFE_REPO_RELATIVE_PATH_REGEX = /^[A-Za-z0-9._/-]+$/;
 
@@ -36,4 +37,18 @@ export function resolveSafeRepoPath(rootDir, relPath, label = 'Repository path')
     rel: toPosix(path.relative(rootDir, abs)),
     abs
   };
+}
+
+export async function assertNoRepoSymlinks(rootDir, relPath) {
+  const target = resolveSafeRepoPath(rootDir, relPath);
+  let current = rootDir;
+  for (const part of target.rel.split('/')) {
+    current = path.join(current, part);
+    try {
+      if ((await fs.lstat(current)).isSymbolicLink()) throw new Error(`Repository path contains a symlink: ${target.rel}`);
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+      break;
+    }
+  }
 }

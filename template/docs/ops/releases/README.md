@@ -16,7 +16,7 @@ Define the release quality bar without binding the blueprint to one hosting prov
 - Release gates must run repository scripts instead of duplicating policy in hosting-provider configuration.
 - The default long-lived branches are `dev` and `main`. Additional branches, hosted test environments, and deployment conventions are project-specific.
 - Release-only fixes must be mirrored back to the normal integration branch or explicitly tracked as follow-up debt.
-- Exceptional commit-to-plan mappings live in `docs/ops/releases/release-mapping.md`.
+- Explicit commit-to-plan mappings and required plan-free change mappings live in `docs/ops/releases/release-mapping.md`.
 
 ## Default Branch and CI Flow
 
@@ -27,8 +27,9 @@ slice/* or fix/* -> PR -> dev -> release/YYYY.MM.DD.N -> PR -> main
 Implementation PRs target `dev`. Release PRs target `main`, with title `Release YYYY.MM.DD.N` and completed-plan evidence.
 Release fixes also return to `dev`.
 
-CI runs fast and full checks for PRs into `dev` and `main`, and for pushes to those branches.
-Slice and fix branch pushes run fast checks. Release PRs and the main merge queue also run release verification.
+CI runs scoped fast checks on PRs and pushes to `dev` and `main`. Feature branches use PR runs.
+Full checks run for broad or harness PRs, selected candidates, and main boundaries. Release PRs and the main merge queue also run release verification.
+See `docs/ops/automation/INTEROP_GITHUB.md` for exact scopes and candidate proof.
 These jobs run repository-defined checks. They do not deploy services or create hosted environments.
 Required status checks and branch protection need project-specific GitHub configuration.
 
@@ -72,7 +73,9 @@ This workflow does not backfill historical releases. Operators retain control ov
 
 `docs/ops/releases/release-mapping.md` is lowercase because it is an operational ledger, not a canonical framework policy document. The script `scripts/automation/release-support-lib.mjs` reads it during `release:notes` and `release:verify`.
 
-Use it only when the release verifier cannot infer a valid mapping from commit messages, completed plans, or accepted small-fix metadata. Normal releases should not need manual entries.
+For every plan-free implementation commit, add a `standard-change` entry with the commit hash and rationale before release verification.
+Ordinary PR or commit summaries do not supply machine-readable release mapping. Documentation-only commits do not require an entry.
+For planned work, use an explicit ledger entry when commit metadata and completed plans do not supply the mapping.
 
 ## High-Risk Release Checks
 
@@ -83,7 +86,8 @@ Use it only when the release verifier cannot infer a valid mapping from commit m
 
 ## Verification
 
-- Run `npm run release:verify` when the adopted project enables release support.
+- If release support is active, run `npm run project:gates:release` to execute all required release gates.
+- Use `npm run release:verify` for the focused range and evidence check.
 - Run `npm run release:notes` to draft release notes from completed plans and accepted mappings.
 - Run `npm run verify:full` before release promotion.
 - Run `npm run verify:deploy` for deployment health checks when a deployed target URL is available.
@@ -91,7 +95,7 @@ Use it only when the release verifier cannot infer a valid mapping from commit m
 
 ## Mapping Rules
 
-- Prefer completed plan metadata and evidence indexes over manual mapping.
+- For planned work, prefer completed plan metadata and evidence indexes over manual mapping.
 - Manual `Plan-ID` mappings must point to completed plans included in the release range.
 - Manual `standard-change` mappings are only for small, low-risk fixes or operational commits with explicit rationale.
 - Do not use release mapping to hide missing closeout, missing validation, or unresolved release risk.

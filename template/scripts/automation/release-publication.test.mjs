@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -17,77 +17,81 @@ const script = [step('Generate release notes'), step(`Create or verify annotated
 
 function run(overrides = {}) {
   const directory = mkdtempSync(path.join(tmpdir(), 'release-publication-'));
-  const calls = path.join(directory, 'calls.txt');
-  const result = spawnSync('bash', ['-e', '-c', `
-    date() { [[ "$3" == *-99-* ]] || printf '%s\n' "\${3//-/.}"; }
-    git() {
-      printf 'git %s\n' "$*" >> "$CALLS"
-      case "$1" in
-        fetch|config|push) return 0 ;;
-        tag)
-          if [[ "$2" == --points-at ]]; then
-            [[ "$NO_PREVIOUS_TAG" != true ]] && printf 'v2026.09.12.1\n'
-            [[ "$NONCANONICAL_TAG" == true ]] && printf 'v2026.09.12.1-rc\n'
-            [[ "$INVALID_RELEASE_TAG" == true ]] && printf 'v2026.99.99.1\n'
-          elif [[ "$2" == --list ]]; then
-            [[ "$ORPHANED_BASE" == true ]] && printf 'v2026.09.11.1\n'
-            [[ "$TAG_STATE" == all ]] && printf '%s\n' "$RELEASE_TAG"
-            [[ "$TAG_STATE" == all && "$PAIRED_TAGS" == true ]] && printf 'source-%s\n' "$RELEASE_TAG"
-            [[ "$NONCANONICAL_TAG" == true ]] && printf 'v2026.09.11.1-rc\n'
-            [[ "$INVALID_RELEASE_TAG" == true ]] && printf 'v2026.99.99.1\n'
-            return 0
-          else return 0; fi ;;
-        cat-file) printf '%s\n' "$TAG_TYPE" ;;
-        rev-list)
-          if [[ "$BAD_MERGE" == true ]]; then printf '%s %s\n' "$MERGE_SHA" "$BASE_SHA"
-          else printf '%s %s %s\n' "$MERGE_SHA" "$BASE_SHA" "$SOURCE_SHA"; fi ;;
-        show-ref)
-          if [[ "$TAG_STATE" == all ]]; then return 0; fi
-          if [[ "$TAG_STATE" == landed && "$4" != refs/tags/source-* ]]; then return 0; fi
-          return 1 ;;
-        rev-parse)
-          if [[ "$2" == "$MERGE_SHA^1" ]]; then printf '%s\n' "$BASE_SHA"
-          elif [[ "$TAG_CONFLICT" == all || ( "$TAG_CONFLICT" == source && "$2" == source-* ) ]]; then printf 'wrong-commit\n'
-          elif [[ "$2" == source-* ]]; then printf '%s\n' "$SOURCE_SHA"
-          else printf '%s\n' "$MERGE_SHA"; fi ;;
-        *) return 90 ;;
-      esac
-    }
-    node() {
-      printf 'node %s\n' "$*" >> "$CALLS"
-      if [[ "$NOTES_FAILURE" == true ]]; then return 1; fi
-      printf '# Release Notes\nObserved slice evidence\n'
-    }
-    gh() {
-      printf 'gh %s\n' "$*" >> "$CALLS"
-      case "$1 $2" in
-        'api '*)
-          if [[ "$*" == *'any(.number =='* ]]; then
-            [[ "$2" == *"/commits/$MERGE_SHA/pulls" ]] && printf 'true\n' || printf 'false\n'
-          else [[ "$PREVIOUS_RELEASE_PR" == true ]] && printf '41\n' || true; fi ;;
-        'release view')
-          if [[ "$3" == v2026.09.12.1 ]]; then
-            [[ "$BASE_RELEASE_EXISTS" == true ]] || return 1
-            [[ "$BASE_RELEASE_UNPUBLISHED" == true ]] && printf 'true\n' || printf 'false\n'
-          else
-            [[ "$RELEASE_EXISTS" == true ]] || return 1
-            [[ "$RELEASE_UNPUBLISHED" == true ]] && printf 'true\n' || printf 'false\n'
-          fi ;;
-        'release create') [[ "$RELEASE_EXISTS" != true && "$PUBLISH_FAILURE" != true ]] ;;
-        *) return 91 ;;
-      esac
-    }
-    ${script}
-  `], { encoding: 'utf8', env: {
-    ...process.env, CALLS: calls, RUNNER_TEMP: directory,
-    BASE_SHA: 'a'.repeat(40), MERGE_SHA: 'b'.repeat(40), SOURCE_SHA: 'c'.repeat(40),
-    RELEASE_TAG: 'v2026.09.13.1', RELEASE_VERSION: '2026.09.13.1', RELEASE_PR_NUMBER: '42',
-    GITHUB_REPOSITORY: 'owner/app', RELEASE_PR_URL: 'https://github.com/owner/app/pull/42',
-    TAG_STATE: 'none', TAG_TYPE: 'tag', TAG_CONFLICT: '', BASE_RELEASE_EXISTS: 'true', BASE_RELEASE_UNPUBLISHED: 'false', RELEASE_EXISTS: 'false', RELEASE_UNPUBLISHED: 'false', BAD_MERGE: 'false',
-    NO_PREVIOUS_TAG: 'false', ORPHANED_BASE: 'false', NONCANONICAL_TAG: 'false', INVALID_RELEASE_TAG: 'false', PREVIOUS_RELEASE_PR: 'false', PAIRED_TAGS: String(pairedTags), NOTES_FAILURE: 'false', PUBLISH_FAILURE: 'false', ...overrides
-  } });
-  const notesPath = path.join(directory, 'release-notes.md');
-  return { ...result, calls: readFileSync(calls, 'utf8'), notes: existsSync(notesPath) ? readFileSync(notesPath, 'utf8') : '' };
+  try {
+    const calls = path.join(directory, 'calls.txt');
+    const result = spawnSync('bash', ['-e', '-c', `
+      date() { [[ "$3" == *-99-* ]] || printf '%s\n' "\${3//-/.}"; }
+      git() {
+        printf 'git %s\n' "$*" >> "$CALLS"
+        case "$1" in
+          fetch|config|push) return 0 ;;
+          tag)
+            if [[ "$2" == --points-at ]]; then
+              [[ "$NO_PREVIOUS_TAG" != true ]] && printf 'v2026.09.12.1\n'
+              [[ "$NONCANONICAL_TAG" == true ]] && printf 'v2026.09.12.1-rc\n'
+              [[ "$INVALID_RELEASE_TAG" == true ]] && printf 'v2026.99.99.1\n'
+            elif [[ "$2" == --list ]]; then
+              [[ "$ORPHANED_BASE" == true ]] && printf 'v2026.09.11.1\n'
+              [[ "$TAG_STATE" == all ]] && printf '%s\n' "$RELEASE_TAG"
+              [[ "$TAG_STATE" == all && "$PAIRED_TAGS" == true ]] && printf 'source-%s\n' "$RELEASE_TAG"
+              [[ "$NONCANONICAL_TAG" == true ]] && printf 'v2026.09.11.1-rc\n'
+              [[ "$INVALID_RELEASE_TAG" == true ]] && printf 'v2026.99.99.1\n'
+              return 0
+            else return 0; fi ;;
+          cat-file) printf '%s\n' "$TAG_TYPE" ;;
+          rev-list)
+            if [[ "$BAD_MERGE" == true ]]; then printf '%s %s\n' "$MERGE_SHA" "$BASE_SHA"
+            else printf '%s %s %s\n' "$MERGE_SHA" "$BASE_SHA" "$SOURCE_SHA"; fi ;;
+          show-ref)
+            if [[ "$TAG_STATE" == all ]]; then return 0; fi
+            if [[ "$TAG_STATE" == landed && "$4" != refs/tags/source-* ]]; then return 0; fi
+            return 1 ;;
+          rev-parse)
+            if [[ "$2" == "$MERGE_SHA^1" ]]; then printf '%s\n' "$BASE_SHA"
+            elif [[ "$TAG_CONFLICT" == all || ( "$TAG_CONFLICT" == source && "$2" == source-* ) ]]; then printf 'wrong-commit\n'
+            elif [[ "$2" == source-* ]]; then printf '%s\n' "$SOURCE_SHA"
+            else printf '%s\n' "$MERGE_SHA"; fi ;;
+          *) return 90 ;;
+        esac
+      }
+      node() {
+        printf 'node %s\n' "$*" >> "$CALLS"
+        if [[ "$NOTES_FAILURE" == true ]]; then return 1; fi
+        printf '# Release Notes\nObserved slice evidence\n'
+      }
+      gh() {
+        printf 'gh %s\n' "$*" >> "$CALLS"
+        case "$1 $2" in
+          'api '*)
+            if [[ "$*" == *'any(.number =='* ]]; then
+              [[ "$2" == *"/commits/$MERGE_SHA/pulls" ]] && printf 'true\n' || printf 'false\n'
+            else [[ "$PREVIOUS_RELEASE_PR" == true ]] && printf '41\n' || true; fi ;;
+          'release view')
+            if [[ "$3" == v2026.09.12.1 ]]; then
+              [[ "$BASE_RELEASE_EXISTS" == true ]] || return 1
+              [[ "$BASE_RELEASE_UNPUBLISHED" == true ]] && printf 'true\n' || printf 'false\n'
+            else
+              [[ "$RELEASE_EXISTS" == true ]] || return 1
+              [[ "$RELEASE_UNPUBLISHED" == true ]] && printf 'true\n' || printf 'false\n'
+            fi ;;
+          'release create') [[ "$RELEASE_EXISTS" != true && "$PUBLISH_FAILURE" != true ]] ;;
+          *) return 91 ;;
+        esac
+      }
+      ${script}
+    `], { encoding: 'utf8', env: {
+      ...process.env, CALLS: calls, RUNNER_TEMP: directory,
+      BASE_SHA: 'a'.repeat(40), MERGE_SHA: 'b'.repeat(40), SOURCE_SHA: 'c'.repeat(40),
+      RELEASE_TAG: 'v2026.09.13.1', RELEASE_VERSION: '2026.09.13.1', RELEASE_PR_NUMBER: '42',
+      GITHUB_REPOSITORY: 'owner/app', RELEASE_PR_URL: 'https://github.com/owner/app/pull/42',
+      TAG_STATE: 'none', TAG_TYPE: 'tag', TAG_CONFLICT: '', BASE_RELEASE_EXISTS: 'true', BASE_RELEASE_UNPUBLISHED: 'false', RELEASE_EXISTS: 'false', RELEASE_UNPUBLISHED: 'false', BAD_MERGE: 'false',
+      NO_PREVIOUS_TAG: 'false', ORPHANED_BASE: 'false', NONCANONICAL_TAG: 'false', INVALID_RELEASE_TAG: 'false', PREVIOUS_RELEASE_PR: 'false', PAIRED_TAGS: String(pairedTags), NOTES_FAILURE: 'false', PUBLISH_FAILURE: 'false', ...overrides
+    } });
+    const notesPath = path.join(directory, 'release-notes.md');
+    return { ...result, calls: readFileSync(calls, 'utf8'), notes: existsSync(notesPath) ? readFileSync(notesPath, 'utf8') : '' };
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 }
 
 test('notes contain real inventory and evidence, not unfinished prompts or claimed test passes', () => {

@@ -10,6 +10,10 @@ export function evalInputPaths(config) {
   }
   return [...new Set([
     'AGENTS.md',
+    'README.md',
+    'docs/README.md',
+    'docs/product-specs/CURRENT-STATE.md',
+    'VISION.md',
     'docs/PLANS.md',
     'docs/governance/RULES.md',
     'docs/design-docs/GIT-SAFETY.md',

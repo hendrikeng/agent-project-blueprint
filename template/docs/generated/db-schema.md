@@ -17,8 +17,8 @@ This file is the stable database entrypoint for agents and reviewers.
 
 - Schema source path and generation command.
 - Current migration head, snapshot identifier, checksum, or equivalent stack-specific version marker.
-- Tables, collections, or models with fields, types, nullability, defaults, and generated values.
-- Primary keys, foreign keys, unique constraints, indexes, checks, row-level policies, triggers, and cascades.
+- Link the canonical schema or generated API instead of copying every field into agent context. Summarize models and critical constraints.
+- Record critical relationships, constraints, and policies that affect safe changes. Keep the full schema in its generator-owned source.
 - Enums, controlled values, seed/reference data, generated clients, and generated types when the stack uses them.
 - Validation evidence for migration integrity and at least one representative read/write path after schema changes.
 

@@ -77,17 +77,16 @@ function resolvedPlanMetadataCommand() {
 
 function buildCommandSet(changedFiles, scope) {
   const commands = [
-    'node ./scripts/automation/compile-runtime-context.mjs',
+    'node ./scripts/automation/compile-runtime-context.mjs --check',
     'node ./scripts/automation/lint-changed.mjs',
     'node ./scripts/automation/check-path-policy.mjs',
     'node ./scripts/docs/repair-plan-references.mjs --check',
     'node ./scripts/docs/check-governance.mjs',
-    'npm run eval:verify',
+    'npm run eval:integrity',
     ...(['broad', 'harness'].includes(scope) ? ['npm run harness:test'] : []),
     resolvedPlanMetadataCommand(),
     'node ./scripts/automation/check-plan-closeout.mjs',
     'node ./scripts/automation/check-harness-alignment.mjs',
-    'node ./scripts/automation/check-quality-score.mjs',
     `node ./scripts/automation/check-project-gates.mjs --profile fast${['broad', 'product'].includes(scope) ? ' --run' : ''}`,
     ...(['broad', 'harness'].includes(scope) ? ['node ./scripts/agent-hardening/check-agent-hardening.mjs'] : [])
   ];

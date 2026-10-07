@@ -17,7 +17,9 @@ Canonical policy still lives in repository docs.
 - PR templates should separate planned slices, small fixes, and releases when those lanes are adopted.
 - CODEOWNERS should route security, identity, payment, migration, and governance-sensitive paths to appropriate owners.
 - GitHub Actions should call repository scripts rather than duplicating policy in workflow YAML.
-- The generic `ci` workflow calls `pr:verify`, `plans:verify:closeout`, `verify:fast`, `verify:full`, and `release:verify`; add service-specific preview/deploy workflows only after documenting them in ops docs.
+- The generic `ci` workflow calls `pr:verify`, `plans:verify:closeout`, `verify:fast`, `verify:full`, and `project:gates:release`.
+- Release PRs and merge groups execute every required release-profile gate. The starter profile includes the focused `release:verify` check.
+- Merge groups use `origin/main` and `RELEASE_ALLOW_ANY_BRANCH=true`. This bypasses branch naming only; range and evidence checks still apply.
 - The generic release-tag workflow tags merged `release/YYYY.MM.DD.N` PRs into `main` as `vYYYY.MM.DD.N` and creates a GitHub Release with generated notes.
 
 ## Branch And PR Lanes
@@ -35,19 +37,22 @@ The check names remain `Fast Gate`, `Full Gate`, and `Release Candidate Gate`.
 
 `scripts/ci/classify-change.mjs` selects explicit product, docs, harness, or broad fast validation.
 Product changes run the declared fast project commands. Docs changes run documentation and safety checks without product or harness test suites.
-Harness PRs run broad fast verification before full verification, including product tests, harness regressions, and agent readiness checks.
-Every code scope retains strict eval evidence, governance, path policy, plan closeout, quality, and harness alignment checks.
+Harness PRs run broad fast verification before full verification, including product tests, harness regressions, and agent document checks.
+Every code scope retains eval integrity, context freshness, governance, path policy, plan closeout, and harness alignment checks.
 Unknown, deleted, mixed, shared-configuration, and sensitive changes select broad fast validation.
 
 Full validation runs for broad or harness PRs, selected candidates, PRs to `main`, `main` pushes, and `main` merge groups.
 Dev pushes run fast validation only. Ordinary risk PRs do not require release verification.
 Standalone `npm run verify:full` includes broad fast verification. CI uses `--skip-fast` only after successful broad fast verification in the same job.
-Strict eval and agent checks belong to fast verification, so full verification does not repeat them.
+Agent activation additionally requires strict eval evidence through `npm run eval:verify`. Software CI does not execute agent safety evaluations.
 Full Gate aggregates the selected checks and rejects failed, skipped, or canceled required jobs. Its compatibility name does not imply full-suite execution on every PR.
 
 PR edits without base changes run only `PR Contract`. Gate jobs are skipped under metadata-only names, so they cannot replace failed or missing code-check evidence.
 Base edits and ready-for-review events run code validation again. Metadata cancellation groups cannot cancel code runs.
 PRs to `main` and merge groups retain release checks. Cache placeholders remain unused.
+Starter workflows pin official actions to reviewed commit SHAs with version comments. Review upstream releases and update the pins together.
+The Node24 action runtime requires Actions Runner 2.327.1 or later. Hosted runners supply it; verify any self-hosted runner before adoption.
+Implicit package-manager caching is disabled. Candidate fetches and release pushes retain scoped Git authentication; read-only CI does not persist credentials.
 
 ### Selected Candidate Proof
 

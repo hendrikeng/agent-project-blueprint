@@ -6,6 +6,29 @@ import { classifyChanges } from '../template/scripts/ci/classify-change.mjs';
 
 const workflow = (name) => readFileSync(new URL(`../template/.github/workflows/${name}.yml`, import.meta.url), 'utf8');
 
+test('starter workflows pin external actions and avoid implicit package-manager caching', () => {
+  const root = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
+  for (const [index, raw] of [root, workflow('ci'), workflow('ci-candidate'), workflow('release-tag')].entries()) {
+    const content = raw.replace(/^[ \t]*#[^\r\n]*(?:\r?\n|$)/gm, '');
+    const actions = content.split(/^[ \t]+-[ \t]+(?=[\w-]+:)/m)
+      .map(block => [block.match(/^[ \t]*uses:[ \t]+([^\r\n]+)/m)?.[1].trim(), block])
+      .filter(([reference]) => reference);
+    assert.ok(actions.length > 0);
+    for (const [reference, block] of actions) {
+      assert.match(reference, /^actions\/[a-z-]+@[a-f0-9]{40}(?:\s+#.*)?$/);
+      const options = block.match(/^([ \t]+)with:[ \t]*\r?\n((?:\1[ \t]+[^\r\n]*(?:\r?\n|$)|\r?\n)*)/m)?.[2] ?? '';
+      if (reference.startsWith('actions/setup-node@')) assert.match(options, /^[ \t]+package-manager-cache:[ \t]+false[ \t]*(?:#.*)?$/m);
+      if (index < 2 && reference.startsWith('actions/checkout@')) assert.match(options, /^[ \t]+persist-credentials:[ \t]+false[ \t]*(?:#.*)?$/m);
+    }
+    if (index < 2) {
+      const permissions = content.match(/^permissions:[ \t]*\r?\n((?:[ \t]+[^\r\n]*(?:\r?\n|$)|\r?\n)*)/m)?.[1];
+      assert.ok(permissions);
+      assert.deepEqual(permissions.trim().split(/\r?\n/).map(line => line.replace(/[ \t]+#.*$/, '').trim()).filter(Boolean), ['contents: read']);
+      assert.doesNotMatch(content, /^[ \t]+permissions:/m);
+    }
+  }
+});
+
 test('default CI retains required aggregates, contract, and release coverage', () => {
   const ci = workflow('ci');
   assert.match(ci, /pull_request:\s+branches: \[dev, main\]\s+types: \[opened, synchronize, reopened, edited, ready_for_review\]/);
@@ -21,7 +44,8 @@ test('default CI retains required aggregates, contract, and release coverage', (
   for (const result of ['SCOPE_RESULT', 'FAST_RESULT', 'RELEASE_RESULT']) assert.ok(ci.includes(`test "$${result}" = success`));
   assert.match(ci, /npm run verify:full -- --skip-fast\s+if: needs.scope.outputs.scope == 'full'/);
   assert.match(ci, /RELEASE_HEAD_REF: \$\{\{ github.event.pull_request.head.sha \}\}/);
-  assert.match(ci, /npm run release:verify -- --allow-any-branch/);
+  assert.equal((ci.match(/run: npm run project:gates:release/g) ?? []).length, 2);
+  assert.match(ci, /RELEASE_BASE_REF: origin\/main\s+RELEASE_ALLOW_ANY_BRANCH: "true"/);
   assert.doesNotMatch(ci, /staging|preview|environment:|railway|wrangler/i);
 });
 
@@ -76,6 +100,7 @@ test('risk PRs run full after broad fast, without requiring release checks or wi
   const fastScript = ci.match(/name: Focused fast validation[\s\S]*?run: \|\n([\s\S]*?)      - run:/)[1];
   for (const [path, fullOnPr] of [
     ['src/auth/session.ts', true], ['src/schema.ts', true], ['package-lock.json', true],
+    ['src/identity.ts', true], ['apps/api/src/tenancy.ts', true], ['apps/api/src/persistence.ts', true],
     ['src/shared/types.ts', true], ['unknown.file', true], ['scripts/automation/verify-fast.mjs', true],
     ['src/components/Card.vue', false], ['docs/product-specs/cards.md', false]
   ]) {

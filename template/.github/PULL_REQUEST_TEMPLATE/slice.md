@@ -17,9 +17,8 @@
 
 ## Planning Path
 
-- [ ] This PR executes a promoted `docs/future/` slice
-- [ ] This PR is a direct-to-`docs/exec-plans/active/` low-risk slice
-- [ ] If the slice stopped being small, isolated, or low risk, the plan was promoted before merge
+- [ ] Execution was authorized, and the plan matches the authorized scope
+- [ ] Material scope or risk changes are reflected in the plan and validation evidence
 
 ## Checklist
 

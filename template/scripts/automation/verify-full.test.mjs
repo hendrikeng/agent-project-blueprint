@@ -5,8 +5,8 @@ import fs from 'node:fs/promises';
 
 import { createTemplateRepo, runNode } from './test-helpers.mjs';
 
-test('verify-full dry-run expands to fast plus merge-level checks', async () => {
-  const rootDir = await createTemplateRepo();
+test('verify-full dry-run expands to fast plus merge-level checks', async (t) => {
+  const rootDir = await createTemplateRepo(t);
   const result = runNode(path.join(rootDir, 'scripts', 'automation', 'verify-full.mjs'), ['--dry-run'], rootDir);
 
   assert.equal(result.status, 0, String(result.stderr));
@@ -14,7 +14,7 @@ test('verify-full dry-run expands to fast plus merge-level checks', async () => 
   assert.match(stdout, /verify-fast/);
   assert.match(stdout, /check-article-conformance/);
   assert.match(stdout, /check-dependencies/);
-  // Fast verification owns strict eval and agent checks; full must not repeat them.
+  // Fast verification owns eval integrity and agent checks; full must not repeat them.
   assert.doesNotMatch(stdout, /check-agent-hardening|check-evals/);
   assert.match(stdout, /check-project-gates\.mjs --profile full --run/);
 
@@ -31,8 +31,8 @@ test('verify-full dry-run expands to fast plus merge-level checks', async () => 
   }
 });
 
-test('verify-full runs every remaining check and propagates child failures', async () => {
-  const rootDir = await createTemplateRepo();
+test('verify-full runs every remaining check and propagates child failures', async (t) => {
+  const rootDir = await createTemplateRepo(t);
   const checks = [
     'scripts/automation/verify-fast.mjs',
     'scripts/check-article-conformance.mjs',

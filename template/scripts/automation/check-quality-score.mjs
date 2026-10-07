@@ -37,11 +37,12 @@ const findingHints = new Map([
   ['MISSING_DOC_GOVERNANCE_CONFIG', 'Add docs/governance/doc-checks.config.json from the harness template.'],
   ['UNCLEAR_DOC_OWNER', 'Set Owner metadata on the canonical doc to a concrete owner.'],
   ['MISSING_PROJECT_GATES', 'Add docs/governance/project-gates.json and wire real project commands.'],
-  ['MISSING_BASELINE_GATE', 'Declare required fast lint, fast typecheck, fast unit-tests, and full build gates where applicable.'],
-  ['WEAK_BASELINE_GATE', 'Mark baseline gates required unless the surface is explicitly deferred with rationale.'],
+  ['MISSING_BASELINE_GATE', 'Declare fast lint, fast typecheck, fast unit-tests, and full build gates.'],
+  ['WEAK_BASELINE_GATE', 'Use required with a real command, or deferred/not-applicable with an empty command and a concrete rationale.'],
+  ['INVALID_GATE_EXEMPTION', 'Use an empty command and a concrete rationale of at least 24 characters.'],
+  ['EXEMPT_BASELINE_GATE', 'This exemption records missing or inapplicable validation, not a successful check.'],
   ['MISSING_GATE_COMMAND', 'Set the gate command to the real project toolchain command.'],
   ['PLACEHOLDER_GATE_COMMAND', 'Replace placeholder commands with real project commands before adoption is complete.'],
-  ['MISSING_UNIT_TEST_GATE', 'Add a required fast unit-tests gate, or document the missing test harness as deferred before relying on quality score.'],
   ['DEFERRED_QUALITY_GATE', 'Keep the deferral truthful with owner, rationale, and activation path; wire the real command when the surface exists.']
 ]);
 
@@ -201,19 +202,23 @@ function inspectProjectGates(config, { templateMode }) {
       continue;
     }
     const command = String(gate.command ?? '').trim();
+    if (gate.status === 'deferred' || gate.status === 'not-applicable') {
+      const rationale = String(gate.rationale ?? '').trim();
+      if (command || rationale.length < 24 || placeholderPattern.test(rationale)) {
+        findings.push(finding('error', 'INVALID_GATE_EXEMPTION', `Exempt gate '${id}' needs an empty command and a concrete rationale.`, gatesConfigRel));
+      } else {
+        findings.push(finding('warning', 'EXEMPT_BASELINE_GATE', `Baseline gate '${id}' is ${gate.status}: ${rationale}`, gatesConfigRel));
+      }
+      continue;
+    }
     if (gate.status !== 'required') {
-      findings.push(finding('error', 'WEAK_BASELINE_GATE', `Baseline gate '${id}' must be required.`, gatesConfigRel));
+      findings.push(finding('error', 'WEAK_BASELINE_GATE', `Baseline gate '${id}' has an invalid status.`, gatesConfigRel));
     }
     if (!command) {
       findings.push(finding('error', 'MISSING_GATE_COMMAND', `Required gate '${id}' has no command.`, gatesConfigRel));
     } else if (!templateMode && placeholderPattern.test(command)) {
       findings.push(finding('error', 'PLACEHOLDER_GATE_COMMAND', `Required gate '${id}' still uses a placeholder command.`, gatesConfigRel));
     }
-  }
-
-  const unitGate = byProfileAndId.get('fast:unit-tests');
-  if (!unitGate || unitGate.status !== 'required') {
-    findings.push(finding('error', 'MISSING_UNIT_TEST_GATE', 'Fast profile must include a required unit-tests gate.', gatesConfigRel));
   }
 
   for (const gate of gates) {

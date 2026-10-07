@@ -34,7 +34,7 @@ jobs:
           test "$GITHUB_EVENT_NAME" = workflow_dispatch
           test "$GITHUB_REF" = "refs/heads/$DEFAULT_BRANCH"
           [[ "$REVISION" =~ ^[a-f0-9]{40}$ ]]
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.revision }}
           fetch-depth: 0
@@ -45,9 +45,10 @@ jobs:
           git fetch origin dev
           test "$(git rev-parse HEAD)" = "$REVISION"
           git merge-base --is-ancestor "$REVISION" origin/dev
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
       - run: corepack enable
       - run: ${{ env.CI_INSTALL_COMMAND }}
       - run: npm run eval:refresh && git diff --exit-code -- docs/generated/evals-report.json
@@ -66,7 +67,7 @@ jobs:
               run_id: e.GITHUB_RUN_ID, run_attempt: e.GITHUB_RUN_ATTEMPT
             }) + "\n");
           '
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: ci-candidate-${{ inputs.revision }}
           path: ${{ runner.temp }}/ci-candidate-evidence/evidence.json

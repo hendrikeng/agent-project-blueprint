@@ -1,12 +1,14 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import process from 'node:process';
 import { execFileSync } from 'node:child_process';
+import { inferPlanId } from './lib/plan-metadata.mjs';
 import {
   ACTIVE_PLAN_DIR,
   assertMergeReadyPlanCloseout,
   assertProtectedBranchHasNoActivePlans,
   changedFilesFromNameStatus,
   isActivePlanPath,
+  isCompletedPlanPath,
   isCandidateDispatch,
   isLocalFeatureIteration,
   resolveCloseoutBase,
@@ -80,7 +82,18 @@ try {
     ...changedFilesFromNameStatus(gitOutput(['diff', '--name-status', '-z'])),
     ...gitOutput(['ls-files', '--others', '--exclude-standard', '-z']).split('\0').filter(Boolean),
   ])];
+  const planPaths = [...new Set([
+    ...gitOutput(['ls-files', '-z', '--', 'docs/future', 'docs/exec-plans/active', 'docs/exec-plans/completed']).split('\0'),
+    ...changedFiles
+  ])].filter(file => /^docs\/(?:future|exec-plans\/(?:active|completed))\/.+\.md$/.test(file) &&
+    !file.split('/').includes('evidence') && !file.endsWith('/README.md'));
+  const knownIds = (read, excluded = []) => new Set(planPaths.filter(file => !excluded.includes(file)).map(file => {
+    const content = read(file);
+    return content ? inferPlanId(content.toString('utf8'), file) : null;
+  }).filter(Boolean));
   assertMergeReadyPlanCloseout(changedFiles, { branchName: changeBranchName,
+    knownPlanIds: knownIds(readWorktree),
+    existingPlanIds: knownIds(readWorktree, changedFiles.filter(isCompletedPlanPath)),
     removedActivePlanFiles: baselineActive.filter(file => readWorktree(file) === null),
     readBaseline: file => readBaseline(file).toString('utf8') });
   const readIndexedFile = file => {
@@ -89,6 +102,8 @@ try {
     return readIndex(file).toString('utf8');
   };
   assertMergeReadyPlanCloseout(indexedChanges, { branchName: changeBranchName,
+    knownPlanIds: knownIds(readIndex),
+    existingPlanIds: knownIds(readIndex, indexedChanges.filter(isCompletedPlanPath)),
     readPlan: readIndexedFile, readEvidence: readIndexedFile,
     removedActivePlanFiles: baselineActive.filter(file => readIndex(file) === null),
     readBaseline: file => readBaseline(file).toString('utf8') });

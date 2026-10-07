@@ -4,8 +4,8 @@ import path from 'node:path';
 
 import { createTemplateRepo, runNode } from './test-helpers.mjs';
 
-test('verify-fast dry-run lists the flat queue safety checks', async () => {
-  const rootDir = await createTemplateRepo();
+test('verify-fast dry-run lists the flat queue safety checks', async (t) => {
+  const rootDir = await createTemplateRepo(t);
   const result = runNode(path.join(rootDir, 'scripts', 'automation', 'verify-fast.mjs'), ['--dry-run'], rootDir);
 
   assert.equal(result.status, 0, String(result.stderr));
@@ -16,14 +16,16 @@ test('verify-fast dry-run lists the flat queue safety checks', async () => {
   assert.doesNotMatch(stdout, /check-performance-budgets/);
 });
 
-test('verify-fast scopes product and docs without weakening strict eval verification', async () => {
-  const rootDir = await createTemplateRepo();
+test('verify-fast scopes product and docs while distinguishing eval integrity from activation', async (t) => {
+  const rootDir = await createTemplateRepo(t);
   const script = path.join(rootDir, 'scripts/automation/verify-fast.mjs');
   for (const scope of ['product', 'docs', 'harness', 'broad']) {
     const result = runNode(script, ['--dry-run', '--scope', scope], rootDir);
     assert.equal(result.status, 0, String(result.stderr));
     const output = String(result.stdout);
-    for (const check of ['eval:verify', 'check-governance', 'check-plan-closeout', 'check-quality-score', 'check-harness-alignment']) assert.ok(output.includes(check), check);
+    for (const check of ['eval:integrity', 'compile-runtime-context.mjs --check', 'check-governance', 'check-plan-closeout', 'check-harness-alignment']) assert.ok(output.includes(check), check);
+    assert.equal(output.includes('npm run eval:verify'), false);
+    assert.equal(output.includes('check-quality-score'), false);
     assert.equal(output.includes('npm run harness:test'), ['harness', 'broad'].includes(scope));
     assert.equal(output.includes('--profile fast --run'), ['product', 'broad'].includes(scope));
     assert.equal(output.includes('check-agent-hardening'), ['harness', 'broad'].includes(scope));
@@ -31,8 +33,8 @@ test('verify-fast scopes product and docs without weakening strict eval verifica
   assert.equal(runNode(script, ['--scope', 'metadata'], rootDir).status, 1);
 });
 
-test('verify-fast adds architecture verification when architecture files changed', async () => {
-  const rootDir = await createTemplateRepo();
+test('verify-fast adds architecture verification when architecture files changed', async (t) => {
+  const rootDir = await createTemplateRepo(t);
   const result = runNode(
     path.join(rootDir, 'scripts', 'automation', 'verify-fast.mjs'),
     ['--dry-run'],
@@ -44,8 +46,8 @@ test('verify-fast adds architecture verification when architecture files changed
   assert.match(String(result.stdout), /check-dependencies/);
 });
 
-test('verify-fast can scope plan metadata verification to one plan', async () => {
-  const rootDir = await createTemplateRepo();
+test('verify-fast can scope plan metadata verification to one plan', async (t) => {
+  const rootDir = await createTemplateRepo(t);
   const result = runNode(
     path.join(rootDir, 'scripts', 'automation', 'verify-fast.mjs'),
     ['--dry-run'],
@@ -58,8 +60,8 @@ test('verify-fast can scope plan metadata verification to one plan', async () =>
   assert.match(String(result.stdout), /check-plan-metadata\.mjs --plan-id red-inbox/);
 });
 
-test('verify-fast checks plan references without mutation in every environment', async () => {
-  const rootDir = await createTemplateRepo();
+test('verify-fast checks plan references without mutation in every environment', async (t) => {
+  const rootDir = await createTemplateRepo(t);
   const result = runNode(
     path.join(rootDir, 'scripts', 'automation', 'verify-fast.mjs'),
     ['--dry-run'],

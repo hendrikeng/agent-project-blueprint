@@ -11,8 +11,8 @@ import {
 
 const LINK_REGEX = /\[[^\]]*\]\(([^)]+)\)/g;
 const INLINE_CODE_REGEX = /`([^`]+)`/g;
-const DIRECT_PLAN_PATH_REGEX = /^docs\/exec-plans\/(?:active|completed)\/[^/]+\.md$/;
-const FUTURE_PLAN_PATH_REGEX = /^docs\/future\/[^/]+\.md$/;
+const DIRECT_PLAN_PATH_REGEX = /^docs\/exec-plans\/(?:active|completed)\/.+\.md$/;
+const FUTURE_PLAN_PATH_REGEX = /^docs\/future\/.+\.md$/;
 
 function toPosix(value) {
   return String(value ?? '').replace(/\\/g, '/');
@@ -153,7 +153,7 @@ function inferPlanIdFromReferencePath(planPath) {
 }
 
 function classifyRepairableReference(normalizedRef) {
-  if (/[*<>]/.test(normalizedRef)) {
+  if (/[*<>]/.test(normalizedRef) || normalizedRef.includes('/evidence/')) {
     return null;
   }
   if (path.posix.basename(normalizedRef).toLowerCase() === 'readme.md') {
@@ -173,20 +173,12 @@ async function loadPlanCatalog(rootDir) {
   const existingPaths = new Set();
 
   async function readPlanDirectory(directoryAbs, phase) {
-    let entries = [];
-    try {
-      entries = await fs.readdir(directoryAbs, { withFileTypes: true });
-    } catch {
-      return [];
-    }
-
     const records = [];
-    for (const entry of entries) {
-      if (!entry.isFile() || !entry.name.toLowerCase().endsWith('.md') || entry.name.toLowerCase() === 'readme.md') {
+    for (const abs of await walkMarkdownFiles(directoryAbs)) {
+      const rel = toPosix(path.relative(rootDir, abs));
+      if (path.basename(abs).toLowerCase() === 'readme.md' || rel.includes('/evidence/')) {
         continue;
       }
-      const abs = path.join(directoryAbs, entry.name);
-      const rel = toPosix(path.relative(rootDir, abs));
       existingPaths.add(rel);
       const content = await fs.readFile(abs, 'utf8');
       const metadata = parseMetadata(content);

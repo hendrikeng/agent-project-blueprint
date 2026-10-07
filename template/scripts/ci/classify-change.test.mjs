@@ -6,10 +6,23 @@ const change = (path, status = 'M') => ({ path, status });
 
 test('explicit categories narrow only recognized non-sensitive changes', () => {
   for (const [path, scope] of [
-    ['src/components/Card.vue', 'product'], ['tests/card.test.ts', 'product'],
+    ['src/components/Card.vue', 'product'], ['src/components/AuthorCard.tsx', 'product'],
+    ['src/ui/tokens.css', 'product'], ['src/ui/designTokens.scss', 'product'], ['src/ui/tokens.module.css', 'product'],
+    ['src/ui/tokenColors.scss', 'product'], ['src/ui/tokens.dark.css', 'product'],
+    ['src/auth/tokens.css', 'broad'], ['src/oauth/callback.ts', 'broad'], ['src/schemas/user.ts', 'broad'],
+    ['docs/product-specs/CURRENT-STATE.md', 'docs'], ['tests/card.test.ts', 'product'],
     ['docs/product-specs/cards.md', 'docs'], ['docs/exec-plans/active/cards.md', 'docs'],
     ['scripts/automation/verify-fast.mjs', 'harness'], ['docs/agent-hardening/EVALS.md', 'harness'],
     ['src/auth/session.ts', 'broad'], ['src/shared/types.ts', 'broad'],
+    ['src/auth0.ts', 'broad'], ['src/lib/auth0Client.ts', 'broad'],
+    ['src/lib/nextauth.ts', 'broad'], ['src/authprovider.ts', 'broad'], ['src/authority.ts', 'broad'],
+    ['src/securityheaders.ts', 'broad'], ['src/accesstoken.ts', 'broad'],
+    ['src/components/AuthoringPanel.tsx', 'product'],
+    ['src/identity.ts', 'broad'], ['apps/api/src/tenancy.ts', 'broad'],
+    ['apps/api/src/persistence.ts', 'broad'], ['src/db-client.ts', 'broad'],
+    ['src/authenticate.ts', 'broad'], ['src/authorize.ts', 'broad'], ['src/authenticator.ts', 'broad'],
+    ['src/unauthorized.ts', 'broad'], ['src/isAuthenticated.ts', 'broad'],
+    ['src/components/AuthorsList.tsx', 'product'], ['src/authentication.ts', 'broad'], ['apps/api/src/services/authorization.ts', 'broad'], ['src/sessionToken.ts', 'broad'],
     ['src/payments/money.ts', 'broad'], ['src/app.config.ts', 'broad'],
     ['package-lock.json', 'broad'], ['.github/workflows/ci.yml', 'broad'],
     ['scripts/ci/classify-change.mjs', 'broad'], ['unexpected.xyz', 'broad']

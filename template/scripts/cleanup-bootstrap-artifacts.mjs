@@ -2,6 +2,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { assertNoRepoSymlinks } from './automation/lib/repo-paths.mjs';
 
 const rootDir = process.cwd();
 const bootstrapArtifacts = [
@@ -117,6 +118,9 @@ async function prunePackageScripts() {
 }
 
 async function main() {
+  for (const relative of ['package.json', downstreamManifestPath, ...bootstrapArtifacts]) {
+    await assertNoRepoSymlinks(rootDir, relative);
+  }
   runPlaceholderCheck();
   await assertPackageScriptsMerged();
   const manifestPruned = await pruneDownstreamManifest();

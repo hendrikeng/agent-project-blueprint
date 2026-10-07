@@ -11,8 +11,9 @@ const scriptPath = path.join(rootDir, 'scripts', 'bootstrap-configure.mjs');
 const harnessSyncPath = path.join(rootDir, 'scripts', 'harness-sync.mjs');
 import { decisions } from './bootstrap-test-helpers.mjs';
 
-for (const owner of ['@acme/platform', '@hendrikeng']) test(`bootstrap configure preserves files and accepts CODEOWNERS ${owner}`, async () => {
+for (const owner of ['@acme/platform', '@hendrikeng']) test(`bootstrap configure preserves files and accepts CODEOWNERS ${owner}`, async (t) => {
   const targetDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bootstrap-configure-'));
+  t.after(() => fs.rm(targetDir, { recursive: true, force: true }));
   assert.equal(spawnSync(process.execPath, [harnessSyncPath, 'install', '--target', targetDir]).status, 0);
   await fs.writeFile(path.join(targetDir, 'application-template.txt'), '{{PRODUCT}} must stay untouched\n', 'utf8');
   await fs.writeFile(path.join(targetDir, 'package.json'), JSON.stringify({ name: 'existing', scripts: { 'verify:fast': '' } }), 'utf8');
@@ -96,8 +97,9 @@ test('reviewed project ownership releases retired decisions without inventing a 
   assert.equal(await fs.readFile(ownershipPath, 'utf8'), JSON.stringify(ownership));
 });
 
-test('bootstrap configure accepts matching source files without Git metadata', async () => {
+test('bootstrap configure accepts matching source files without Git metadata', async (t) => {
   const targetDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bootstrap-configure-no-git-'));
+  t.after(() => fs.rm(targetDir, { recursive: true, force: true }));
   const env = { ...process.env, PATH: path.dirname(process.execPath) };
   assert.equal(spawnSync(process.execPath, [harnessSyncPath, 'install', '--target', targetDir], { env }).status, 0);
   const packetPath = path.join(targetDir, 'docs', 'ops', 'automation', 'bootstrap-decisions.json');
@@ -109,8 +111,9 @@ test('bootstrap configure accepts matching source files without Git metadata', a
   assert.equal(lockfile.lockfileVersion, 3);
 });
 
-test('bootstrap configure reports edited template placeholders before writing any replacements', async () => {
+test('bootstrap configure reports edited template placeholders before writing any replacements', async (t) => {
   const targetDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bootstrap-configure-edited-'));
+  t.after(() => fs.rm(targetDir, { recursive: true, force: true }));
   assert.equal(spawnSync(process.execPath, [harnessSyncPath, 'install', '--target', targetDir]).status, 0);
   await fs.writeFile(path.join(targetDir, 'README.md'), '# Custom {{PRODUCT}}\n', 'utf8');
   const packetPath = path.join(targetDir, 'docs', 'ops', 'automation', 'bootstrap-decisions.json');
@@ -122,8 +125,9 @@ test('bootstrap configure reports edited template placeholders before writing an
   assert.match(await fs.readFile(path.join(targetDir, 'VISION.md'), 'utf8'), /\{\{DOC_OWNER\}\}/);
 });
 
-test('bootstrap configure rejects missing managed files before replacing anything', async () => {
+test('bootstrap configure rejects missing managed files before replacing anything', async (t) => {
   const targetDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bootstrap-configure-missing-file-'));
+  t.after(() => fs.rm(targetDir, { recursive: true, force: true }));
   assert.equal(spawnSync(process.execPath, [harnessSyncPath, 'install', '--target', targetDir]).status, 0);
   await fs.rm(path.join(targetDir, 'VISION.md'));
   const packetPath = path.join(targetDir, 'docs', 'ops', 'automation', 'bootstrap-decisions.json');
@@ -135,8 +139,9 @@ test('bootstrap configure rejects missing managed files before replacing anythin
   assert.match(await fs.readFile(path.join(targetDir, 'README.md'), 'utf8'), /\{\{PRODUCT\}\}/);
 });
 
-test('bootstrap configure rejects incomplete managed file manifests before replacing files', async () => {
+test('bootstrap configure rejects incomplete managed file manifests before replacing files', async (t) => {
   const targetDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bootstrap-configure-incomplete-manifest-'));
+  t.after(() => fs.rm(targetDir, { recursive: true, force: true }));
   assert.equal(spawnSync(process.execPath, [harnessSyncPath, 'install', '--target', targetDir]).status, 0);
   const packetPath = path.join(targetDir, 'docs', 'ops', 'automation', 'bootstrap-decisions.json');
   await fs.writeFile(packetPath, JSON.stringify(await decisions()), 'utf8');
@@ -182,8 +187,9 @@ test('baseline migration permits reviewed bootstrap omissions without losing the
   await assert.rejects(fs.access(path.join(target, omitted)));
 });
 
-test('bootstrap configure rejects malformed package.json before replacing files', async () => {
+test('bootstrap configure rejects malformed package.json before replacing files', async (t) => {
   const targetDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bootstrap-configure-package-'));
+  t.after(() => fs.rm(targetDir, { recursive: true, force: true }));
   assert.equal(spawnSync(process.execPath, [harnessSyncPath, 'install', '--target', targetDir]).status, 0);
   await fs.writeFile(path.join(targetDir, 'package.json'), '{', 'utf8');
   const packetPath = path.join(targetDir, 'docs', 'ops', 'automation', 'bootstrap-decisions.json');
@@ -199,8 +205,9 @@ test('bootstrap configure rejects malformed package.json before replacing files'
   assert.match(await fs.readFile(path.join(targetDir, 'VISION.md'), 'utf8'), /\{\{DOC_OWNER\}\}/);
 });
 
-test('bootstrap configure rejects unsupported packet versions and invalid dates', async () => {
+test('bootstrap configure rejects unsupported packet versions and invalid dates', async (t) => {
   const targetDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bootstrap-configure-contract-'));
+  t.after(() => fs.rm(targetDir, { recursive: true, force: true }));
   assert.equal(spawnSync(process.execPath, [harnessSyncPath, 'install', '--target', targetDir]).status, 0);
   const packetPath = path.join(targetDir, 'docs', 'ops', 'automation', 'bootstrap-decisions.json');
   const packet = await decisions();
@@ -269,8 +276,9 @@ test('bootstrap configure rejects unsupported packet versions and invalid dates'
   assert.match(result.stderr, /Blueprint source revision does not match/);
 });
 
-test('bootstrap configure refuses incomplete decision packets', async () => {
+test('bootstrap configure refuses incomplete decision packets', async (t) => {
   const targetDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bootstrap-configure-missing-'));
+  t.after(() => fs.rm(targetDir, { recursive: true, force: true }));
   assert.equal(spawnSync(process.execPath, [harnessSyncPath, 'install', '--target', targetDir]).status, 0);
   const packetPath = path.join(targetDir, 'decisions.json');
   await fs.writeFile(packetPath, JSON.stringify({ schemaVersion: 1, values: { PRODUCT: 'Incomplete' } }), 'utf8');

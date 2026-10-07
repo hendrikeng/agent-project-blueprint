@@ -1,4 +1,4 @@
-# Current State
+# Current Product State
 
 Status: canonical
 Owner: {{DOC_OWNER}}
@@ -6,37 +6,35 @@ Last Updated: {{LAST_UPDATED_ISO_DATE}}
 Source of Truth: This document.
 Current State Date: {{CURRENT_STATE_DATE}}
 
-This file is the canonical product-state snapshot. It tells agents what the product already does, which behavior is trusted, and which assumptions still need proof from live code or product owners.
-
 ## Scope Snapshot
 
 - {{SCOPE1}}
 - {{SCOPE2}}
 - {{SCOPE3}}
-- Additional repo-specific depth and roadmap notes can live under this file.
 
 ## Current Product Surface
 
-- `primary users`: document the users or operators this repository serves.
-- `core workflows`: document the workflows that must stay coherent across product, UI, backend, and evidence.
-- `critical entities`: document the domain objects whose state transitions must stay correct.
-- `privileged actions`: document the actions that require explicit authority, auditability, or elevated review.
-- `external systems`: document integrations, imports, exports, callbacks, or providers that influence product behavior.
+Replace this guidance with a short table of shipped capabilities during adoption.
+For each capability, record its state, code or test anchor, and a link to details only when needed.
+Use states: shipped, partial, unavailable. Do not present a planned feature as shipped.
+Keep one row per capability. Describe observable behavior, not implementation history.
 
-## Behavior Contracts
+## Current Gaps
 
-- Document stable user-visible behavior here before agents expand or rewrite it.
-- Keep workflow state names, status transitions, controlled labels, and product terminology aligned with live code.
-- Call out behavior that is intentionally missing, manual, degraded, or behind an environment/config gate.
-- If a plan changes the meaning of a user-visible state, update this file in the same slice as implementation and validation evidence.
+List only unresolved product gaps. Link each gap to its owning future or active plan when one exists.
+Remove a gap when the behavior lands and its evidence passes. Do not retain crossed-out completed items here.
+Plans own execution status. This snapshot owns current product behavior.
 
 ## Current Risks And Open Questions
 
-- Document the highest-risk unknowns that future agents must verify before expanding behavior.
-- Remove resolved questions when completed evidence or updated specs make the answer durable.
+Keep only unresolved risks and decisions with an owner and the next verification action.
+When facts disagree, name the sources and verify the nearest implementation before changing behavior.
 
-## Agent Use
+## Snapshot Maintenance
 
-- Treat this document as product truth, not as delivery history.
-- Verify stale or surprising claims against nearest live code before changing behavior.
-- Do not infer roadmap priority from this snapshot; use `docs/future/`, active plans, and explicit user requests for executable scope.
+Update affected rows in place whenever product behavior changes.
+Remove superseded statements, resolved questions, and obsolete limitations in the same change.
+Do not append dates, release summaries, completed-plan narratives, commands, or raw logs.
+Keep this file within 12,000 UTF-8 bytes. Put detailed contracts in linked domain specs.
+Update Current State Date only after verifying the snapshot against code and evidence.
+A recent date is not proof that every claim is current.

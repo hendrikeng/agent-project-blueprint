@@ -2,6 +2,8 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { execFileSync } from "node:child_process";
+import { parseMetadata, metadataValue as planMetadataValue, validatePlanRecord, inferPlanId } from './lib/plan-metadata.mjs';
+import { isCompletedPlanPath, isActivePlanPath, isEvidenceIndexPath } from './plan-closeout-lib.mjs';
 
 const RELEASE_TAG_REGEX = /^v\d{4}\.\d{2}\.\d{2}\.\d+$/;
 const RELEASE_BRANCH_REGEX = /^release\/\d{4}\.\d{2}\.\d{2}\.\d+$/;
@@ -64,7 +66,7 @@ function extractPlanIds(content) {
 }
 
 function extractEvidenceBullets(content) {
-  const match = content.match(/^## Evidence Summary\n([\s\S]*?)(?=^##\s|$)/m);
+  const match = content.match(/^## Evidence Summary\n([\s\S]*?)(?=^##\s|(?![\s\S]))/m);
   if (!match) return [];
   return match[1]
     .split("\n")
@@ -137,7 +139,7 @@ export function releaseSourceBoundary(base, hasRef = refExists) {
 
 function parseArgs(argv) {
   const options = {
-    allowAnyBranch: false,
+    allowAnyBranch: process.env.RELEASE_ALLOW_ANY_BRANCH === 'true',
     base: process.env.RELEASE_BASE_REF || "",
     head: process.env.RELEASE_HEAD_REF || "HEAD",
   };
@@ -175,7 +177,11 @@ function changedFiles(base, head) {
 }
 
 function commitHashes(base, head) {
-  return splitLines(git(["rev-list", "--reverse", `${base}..${head}`]));
+  const publishedSources = splitLines(gitMaybe(["tag", "--merged", base, "--list", "v[0-9]*"]))
+    .filter(tag => RELEASE_TAG_REGEX.test(tag) && isValidReleaseVersion(tag.slice(1)))
+    .map(tag => `source-${tag}`)
+    .filter(source => refExists(source) && gitMaybe(["rev-list", "--count", `${head}..${source}`]) === "0");
+  return splitLines(git(["rev-list", "--reverse", head, "--not", base, ...publishedSources]));
 }
 
 function commitDetails(hash) {
@@ -186,12 +192,14 @@ function commitDetails(hash) {
 
 function buildPlanFromFile(head, filePath) {
   const content = fileAtRef(head, filePath);
-  const planId = metadataValue(content, "Plan-ID");
-  const doneEvidence = metadataValue(content, "Done-Evidence");
+  const metadata = parseMetadata(content);
+  const planId = planMetadataValue(metadata, "Plan-ID");
+  const doneEvidence = planMetadataValue(metadata, "Done-Evidence").replace(/^`|`$/g, '');
   const title = content.match(/^#\s+(.+)$/m)?.[1]?.trim() ?? planId;
   return {
     filePath,
     content,
+    metadata,
     planId,
     title,
     doneEvidence,
@@ -238,7 +246,7 @@ function treeFiles(ref, directory) {
 
 function activePlanIds(head) {
   const result = new Map();
-  const files = head ? treeFiles(head, "docs/exec-plans/active") : listMarkdownFiles("docs/exec-plans/active");
+  const files = (head ? treeFiles(head, "docs/exec-plans/active") : listMarkdownFiles("docs/exec-plans/active")).filter(isActivePlanPath);
 
   for (const filePath of files) {
     const content = head ? fileAtRef(head, filePath) : readFileSync(path.join(root, filePath), "utf8");
@@ -300,11 +308,7 @@ export function analyzeReleaseRange(argv = process.argv.slice(2)) {
 
   const files = changedFiles(base, head);
   const commits = commitHashes(base, head).map(commitDetails);
-  const completedPlanFiles = files.filter((file) => (
-    file.startsWith("docs/exec-plans/completed/") &&
-    file.endsWith(".md") &&
-    !file.endsWith("/README.md")
-  ));
+  const completedPlanFiles = files.filter(isCompletedPlanPath);
   const releaseCommitMappingsForHead = releaseCommitMappings(head);
   const mappedStandardChanges = [];
 
@@ -314,20 +318,26 @@ export function analyzeReleaseRange(argv = process.argv.slice(2)) {
 
   const plansById = new Map(plans.map((plan) => [plan.planId, plan]));
   const activeIds = activePlanIds(head);
+  const identityFiles = ['docs/future', 'docs/exec-plans/active', 'docs/exec-plans/completed']
+    .flatMap(directory => treeFiles(head, directory)).filter(file => !file.split('/').includes('evidence'));
+  const identityRecords = identityFiles.map(file => [file, inferPlanId(fileAtRef(head, file), file)]);
+  const knownPlanIds = new Set(identityRecords.map(([, id]) => id).filter(Boolean));
+  const seenPlanIds = new Set(identityRecords.filter(([file]) => !completedPlanFiles.includes(file)).map(([, id]) => id).filter(Boolean));
 
   for (const filePath of completedPlanFiles) {
     const plan = buildPlanFromFile(head, filePath);
+    findings.push(...validatePlanRecord({ phase: 'completed', rel: filePath, ...plan }, { knownPlanIds, seenPlanIds })
+      .map(issue => `${issue.code}: ${issue.message} (${filePath})`));
     if (!plan.planId) {
       findings.push(`Completed plan is missing Plan-ID: ${filePath}`);
       continue;
     }
 
-    if (!plan.doneEvidence || plan.doneEvidence.toLowerCase() === "pending") {
-      findings.push(`Completed plan ${plan.planId} is missing Done-Evidence.`);
-    } else if (!plan.doneEvidence.startsWith("docs/exec-plans/evidence-index/")) {
-      findings.push(`Completed plan ${plan.planId} has Done-Evidence outside the evidence index: ${plan.doneEvidence}`);
-    } else if (!fileAtRef(head, plan.doneEvidence)) {
-      findings.push(`Completed plan ${plan.planId} points to missing evidence: ${plan.doneEvidence}`);
+    if (!isEvidenceIndexPath(plan.doneEvidence) || path.posix.normalize(plan.doneEvidence) !== plan.doneEvidence ||
+        !files.includes(plan.doneEvidence) ||
+        !/^100(?:644|755) blob [a-f0-9]+\t/.test(git(['ls-tree', head, '--', plan.doneEvidence])) ||
+        !fileAtRef(head, plan.doneEvidence).trim()) {
+      findings.push(`Completed plan ${plan.planId} requires a nonempty changed regular Done-Evidence index at the selected head.`);
     }
 
     if (activeIds.has(plan.planId)) {
@@ -339,7 +349,7 @@ export function analyzeReleaseRange(argv = process.argv.slice(2)) {
     if (commit.files.length === 0) continue;
     const commitPlanIds = new Set(extractPlanIds(commit.message));
     for (const filePath of commit.files) {
-      if (filePath.startsWith("docs/exec-plans/completed/") && filePath.endsWith(".md")) {
+      if (isCompletedPlanPath(filePath)) {
         const content = fileAtRef(commit.hash, filePath);
         for (const planId of extractPlanIds(content)) commitPlanIds.add(planId);
       }
@@ -379,9 +389,11 @@ export function analyzeReleaseRange(argv = process.argv.slice(2)) {
     plan.evidenceBullets = evidenceContent ? extractEvidenceBullets(evidenceContent) : [];
   }
 
-  const hasNonDocumentationCommit = commits.some((commit) => !isDocumentationOnly(commit.files));
+  const acceptedStandardHashes = new Set(mappedStandardChanges.map(change => change.hash));
+  const hasUnmappedImplementation = commits.some(commit => commit.files.length > 0 &&
+    !isDocumentationOnly(commit.files) && !acceptedStandardHashes.has(commit.hash));
 
-  if (plans.length === 0 && hasNonDocumentationCommit) {
+  if (plans.length === 0 && hasUnmappedImplementation) {
     findings.push("Release range contains commits but no completed slice plans.");
   }
 
@@ -478,5 +490,6 @@ export function usage(commandName) {
     "- A release-tag base uses its companion source-vYYYY.MM.DD.N tag when available.",
     "- --head uses RELEASE_HEAD_REF, then HEAD.",
     "- release verification expects the current branch to match release/YYYY.MM.DD.N unless --allow-any-branch is set.",
+    "- RELEASE_ALLOW_ANY_BRANCH=true is the environment equivalent for an explicitly selected alternate boundary.",
   ].join("\n");
 }

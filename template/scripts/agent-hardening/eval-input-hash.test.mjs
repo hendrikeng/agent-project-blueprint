@@ -16,6 +16,24 @@ test('eval hash covers governed inputs and rejects invalid additional paths', as
     await fs.mkdir(path.dirname(path.join(root, relative)), { recursive: true });
     await fs.writeFile(path.join(root, relative), relative);
   }
+  await fs.writeFile(path.join(root, 'VISION.md'), 'Source of Truth: README.md#product-direction\n');
+  await fs.writeFile(path.join(root, 'README.md'), '## Product Direction\n\nServe individual readers.\n');
+  const beforeDirection = await computeEvalInputSha256(root, config);
+  await fs.writeFile(path.join(root, 'README.md'), '## Product Direction\n\nServe reading teams.\n');
+  assert.notEqual(await computeEvalInputSha256(root, config), beforeDirection,
+    'README-owned direction must invalidate evaluations while the VISION pointer remains unchanged');
+  const state = path.join(root, 'docs/product-specs/CURRENT-STATE.md');
+  await fs.mkdir(path.dirname(state), { recursive: true });
+  await fs.writeFile(state, 'Current feature: draft.\n');
+  const beforeState = await computeEvalInputSha256(root, config);
+  await fs.writeFile(state, 'Current feature: shipped.\n');
+  assert.notEqual(await computeEvalInputSha256(root, config), beforeState, 'required startup context must invalidate prior evaluation identity');
+  const taskMap = path.join(root, 'docs/README.md');
+  await fs.writeFile(taskMap, 'Task map: read the security contract.\n');
+  const beforeTaskMap = await computeEvalInputSha256(root, config);
+  await fs.writeFile(taskMap, 'Task map: read the security and reliability contracts.\n');
+  assert.notEqual(await computeEvalInputSha256(root, config), beforeTaskMap,
+    'the required task map must invalidate evaluation identity');
   for (const relative of evalInputPaths(config)) {
     const before = await computeEvalInputSha256(root, config);
     await fs.appendFile(path.join(root, relative), '\nchanged');

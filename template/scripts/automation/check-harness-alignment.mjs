@@ -7,6 +7,8 @@ const findings = [];
 
 const requiredScripts = new Map([
   ['context:compile', 'node ./scripts/automation/compile-runtime-context.mjs'],
+  ['context:check', 'node ./scripts/automation/compile-runtime-context.mjs --check'],
+  ['eval:integrity', 'node ./scripts/agent-hardening/check-evals.mjs --integrity-only'],
   ['docs:verify', 'node ./scripts/docs/check-governance.mjs'],
   ['conformance:verify', 'node ./scripts/check-article-conformance.mjs'],
   ['architecture:verify', 'node ./scripts/architecture/check-dependencies.mjs'],
@@ -17,6 +19,7 @@ const requiredScripts = new Map([
   ['project:gates:verify', 'node ./scripts/automation/check-project-gates.mjs'],
   ['project:gates:fast', 'node ./scripts/automation/check-project-gates.mjs --profile fast --run'],
   ['project:gates:full', 'node ./scripts/automation/check-project-gates.mjs --profile full --run'],
+  ['project:gates:release', 'node ./scripts/automation/check-project-gates.mjs --profile release --run'],
   ['harness:test', 'node --test scripts/agent-hardening/*.test.mjs scripts/architecture/*.test.mjs scripts/automation/*.test.mjs scripts/automation/lib/*.test.mjs scripts/automation/lib/contracts/*.test.mjs scripts/ci/*.test.mjs scripts/docs/*.test.mjs scripts/docs/lib/*.test.mjs'],
   ['harness:verify', 'node ./scripts/automation/check-harness-alignment.mjs'],
   ['plans:repair', 'node ./scripts/docs/repair-plan-references.mjs'],
@@ -62,20 +65,15 @@ const canonicalDocs = [
   'docs/governance/project-gates.json'
 ];
 
+// Check stable document sections, not exact prose that would freeze prompt improvements.
 const requiredDocSnippets = [
-  ['README.md', 'docs/future/ -> docs/exec-plans/active/ -> docs/exec-plans/completed/'],
-  ['AGENTS.md', 'Every non-trivial code change should be reviewable as production engineering'],
-  ['docs/QUALITY_SCORE.md', 'A slice is high quality only when it clears all applicable gates'],
-  ['docs/ops/automation/README.md', 'Quality Review'],
-  ['docs/FRONTEND.md', 'Frontend Quality Bar'],
-  ['docs/BACKEND.md', 'Backend Quality Bar'],
-  ['docs/SECURITY.md', 'Security Review Checklist'],
-  ['docs/RELIABILITY.md', 'Reliability Anti-Patterns'],
-  ['docs/agent-hardening/RUN_CONTROL.md', 'Runtime-native execution machinery is optional'],
-  ['docs/governance/RULES.md', 'Policy Surface Model'],
-  ['docs/governance/project-gates.json', '"id": "lint"'],
-  ['docs/ops/api/README.md', 'API Contract'],
-  ['docs/ops/releases/README.md', 'Release Contract']
+  ['docs/FRONTEND.md', '## Frontend Quality Bar'],
+  ['docs/BACKEND.md', '## Backend Quality Bar'],
+  ['docs/SECURITY.md', '## Security Review Checklist'],
+  ['docs/RELIABILITY.md', '## Reliability Anti-Patterns'],
+  ['docs/governance/RULES.md', '## Policy Surface Model'],
+  ['docs/ops/api/README.md', '## API Contract'],
+  ['docs/ops/releases/README.md', '## Release Contract']
 ];
 
 function addFinding(code, message, filePath) {
@@ -113,11 +111,6 @@ function validateScripts(scriptMap, filePath) {
     const actual = String(scriptMap?.[scriptName] ?? '').trim();
     if (actual !== expected) {
       addFinding('SCRIPT_MISMATCH', `Script '${scriptName}' must be '${expected}'.`, filePath);
-    }
-  }
-  for (const scriptName of Object.keys(scriptMap ?? {})) {
-    if (scriptName.startsWith('verify:') && !['verify:fast', 'verify:full', 'verify:deploy'].includes(scriptName)) {
-      addFinding('UNSUPPORTED_SCRIPT', `Script '${scriptName}' is not part of the blueprint package contract.`, filePath);
     }
   }
 }

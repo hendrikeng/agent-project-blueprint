@@ -7,39 +7,20 @@ Source of Truth: This document and `docs/governance/architecture-rules.json`.
 
 ## Rules
 
-- Enforce module boundaries with explicit dependency constraints, not informal reviewer memory.
-- Keep dependency direction aligned with `docs/architecture/LAYERS.md`.
-- Preserve server-authority boundaries for sensitive domain operations.
-- Prefer explicit domain contracts over cross-domain imports.
-- Shared code is allowed only when it is stable, ownership is clear, and it does not smuggle domain behavior across boundaries.
-- UI/runtime adapters may depend inward on services and contracts; services must not depend on UI, route handlers, controllers, jobs, or framework-specific runtime objects.
-- Repositories/data-access modules must not import UI, runtime adapters, service workflow code, or request/session objects.
-- Types/contracts must remain side-effect free and must not import runtime, data access, environment, or framework code.
-- Configuration modules may expose validated settings; business logic must not read raw environment variables directly when a config boundary exists.
-- Generated code must have an owner and regeneration command. Do not hand-edit generated files unless the generator is unavailable and the exception is documented.
-- Test-only shortcuts must stay in test utilities and must not become production imports.
-
-## Boundary Exceptions
-
-- A boundary exception must name the source, target, owner, reason, expiry, and removal plan.
-- Exceptions must live in the relevant plan, evidence index, or architecture rule config; they must not live only in PR text or chat.
-- Prefer a narrow allowlist over a broad rule relaxation.
-- Expired exceptions block merge until removed, renewed, or converted into a deliberate architecture change.
+Follow actual boundaries in `ARCHITECTURE.md` and `docs/architecture/TOPOLOGY.md`.
+Keep trusted authority out of client code and shared contracts free from unexpected runtime effects.
+Avoid imports that cross an ownership boundary without an explicit contract.
+Do not create a generic layer structure for a project that does not need it.
 
 ## Rule Configuration
 
-- Import graph checks, forbidden patterns, and command hooks live in the project-owned `docs/governance/architecture-rules.json`.
-- The blueprint does not require Nx, project tags, or an ESLint configuration format.
-- Human-readable policy belongs in this document; machine-readable gates belong in the JSON config.
-- If the docs and config disagree, fix both in the same slice before claiming architecture verification as evidence.
+`docs/governance/architecture-rules.json` owns deterministic checks for current boundaries.
+Supported checks: `relative_import_graph`, `forbidden_import_patterns_rg`, and `command_hook`.
+Use a native toolchain hook when it parses imports better than the built-in checks.
+An empty check list needs a concrete rationale and reports that boundaries are not enforced.
+A temporary exception names its owner, scope, reason, removal trigger, and expiry when relevant.
 
 ## Verification
 
-- Run `npm run architecture:verify`.
-- Keep the rule config synchronized with actual imports.
-- Supported check types are `relative_import_graph`, `forbidden_import_patterns_rg`, and `command_hook`.
-- Use the project toolchain through a command hook when its parser covers imports more accurately than the built-in checks.
-- New projects start with no configured checks. During adoption, wire checks for the actual boundaries or record a concrete `rationale`.
-- An empty `checks` array with a rationale reports “not enforced.” This is not evidence of architecture enforcement.
-- Retired `nx_dep_constraints` and `required_project_tags` checks fail as unknown types. Replace them before verification.
-- Any dependency-rule change must include either updated verification config or a written reason why the rule is currently review-only.
+Run `npm run architecture:verify` when dependency rules or their covered imports change.
+Update the rule and its check together. A review-only constraint must say so.

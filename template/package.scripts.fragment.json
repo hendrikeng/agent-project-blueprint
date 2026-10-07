@@ -15,6 +15,7 @@
     "project:gates:verify": "node ./scripts/automation/check-project-gates.mjs",
     "project:gates:fast": "node ./scripts/automation/check-project-gates.mjs --profile fast --run",
     "project:gates:full": "node ./scripts/automation/check-project-gates.mjs --profile full --run",
+    "project:gates:release": "node ./scripts/automation/check-project-gates.mjs --profile release --run",
     "lint:changed": "node ./scripts/automation/lint-changed.mjs",
     "harness:test": "node --test scripts/agent-hardening/*.test.mjs scripts/architecture/*.test.mjs scripts/automation/*.test.mjs scripts/automation/lib/*.test.mjs scripts/automation/lib/contracts/*.test.mjs scripts/ci/*.test.mjs scripts/docs/*.test.mjs scripts/docs/lib/*.test.mjs",
     "harness:verify": "node ./scripts/automation/check-harness-alignment.mjs",
@@ -25,6 +26,8 @@
     "release:verify": "node ./scripts/automation/release-verify.mjs",
     "verify:fast": "node ./scripts/automation/verify-fast.mjs",
     "verify:full": "node ./scripts/automation/verify-full.mjs",
-    "verify:deploy": "node ./scripts/automation/verify-deploy.mjs"
+    "verify:deploy": "node ./scripts/automation/verify-deploy.mjs",
+    "context:check": "node ./scripts/automation/compile-runtime-context.mjs --check",
+    "eval:integrity": "node ./scripts/agent-hardening/check-evals.mjs --integrity-only"
   }
 }

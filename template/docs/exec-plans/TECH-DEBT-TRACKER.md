@@ -1,4 +1,4 @@
-# Tech Debt Tracker
+# Current Debt
 
 Status: canonical
 Owner: {{DOC_OWNER}}
@@ -7,16 +7,10 @@ Source of Truth: This document.
 
 ## Open
 
-- No open debt explicitly tracked in this canonical template.
-
-## Closed
-
-- Historical debt closures are tracked in completed plans.
+No unowned debt is recorded in this template.
 
 ## Tracking Rules
 
-- Track debt here only when it is real, current, and not already owned by an active or future plan.
-- Each open item should include owner, affected surface, risk, why it is deferred, expected trigger for action, and linked plan when available.
-- Do not use this file as a backlog for feature ideas, vague cleanup, or review comments that can be handled in the current slice.
-- High-risk debt affecting security, reliability, data integrity, payments, identity, or release safety should become a future plan rather than staying as a loose note.
-- Close debt by linking the completed plan, PR, commit, or evidence index that removed the risk.
+Track only real unresolved debt without an existing plan owner.
+Name the affected surface, risk, owner, and trigger. Link the plan when one exists.
+Remove resolved entries. Keep closure history in completed plans rather than a growing Closed section.

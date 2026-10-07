@@ -647,6 +647,14 @@ async function installOrUpdate(targetDir, manifest, copyEntries, managedEntries,
     assertWithinDirectory(rootDir, sourcePath, `source file '${entry.sourcePath}'`);
     assertWithinDirectory(targetDir, targetPath, `target file '${entry.targetPath}'`);
     await assertNoTargetSymlink(targetDir, entry.targetPath);
+    if (entry.targetPath === '.gitignore' && !installedManifest) {
+      try {
+        await fs.access(targetPath);
+        continue;
+      } catch (error) {
+        if (error?.code !== 'ENOENT') throw error;
+      }
+    }
     await fs.mkdir(path.dirname(targetPath), { recursive: true });
     if (configured) await writeTextFileAtomic(targetPath, configured.contents.get(entry.targetPath));
     else await fs.copyFile(sourcePath, targetPath);
@@ -690,6 +698,14 @@ async function main() {
   const manifestState = await loadDownstreamManifest(targetDir, sourceManifest);
   const manifestValidation = validateDownstreamManifest(manifestState, sourceManifest);
   const installedManifest = manifestState.valid ? { ...manifestState.manifest } : null;
+  // Compare upstream templates with the recorded source baseline, never with project prose.
+  // Report before advancing the manifest so protected guidance changes remain reviewable.
+  const projectBaseline = new Map([
+    ...(installedManifest?.managedFiles ?? []), ...(installedManifest?.projectFiles ?? [])
+  ].map((entry) => [entry.targetPath, entry.sha256]));
+  const projectUpdatesAvailable = installedManifest ? allSourceEntries
+    .filter((entry) => projectTargets.has(entry.targetPath) && projectBaseline.get(entry.targetPath) !== entry.sha256)
+    .map((entry) => entry.targetPath).sort() : [];
   if (installedManifest && (command === 'update' || command === 'drift')) {
     // Release ownership without deleting or inspecting downstream project content.
     installedManifest.managedFiles = installedManifest.managedFiles.filter((entry) => {
@@ -702,6 +718,10 @@ async function main() {
     ? await compareTarget(targetDir, allSourceEntries, installedManifest)
     : drift;
 
+  if (!jsonOutput && projectUpdatesAvailable.length) {
+    process.stdout.write(`[harness-sync] Project-owned template updates need manual reconciliation before advancing the baseline: ${projectUpdatesAvailable.join(', ')}\n`);
+  }
+
   if (command === 'drift') {
     const payload = {
       command,
@@ -711,6 +731,7 @@ async function main() {
       modified: drift.modified,
       bootstrapOnly,
       projectOwned,
+      projectUpdatesAvailable,
       managedFileCount: managedSourceEntries.length,
       templatePayloadFileCount: allSourceEntries.length,
       unexpectedManaged: drift.unexpectedManaged,
@@ -740,7 +761,7 @@ async function main() {
   if (command === 'install' && manifestState.exists) {
     throw new Error('[TARGET_ALREADY_INSTALLED] This target already has a harness manifest. Use update or drift.');
   }
-  if (command === 'install' && fullTemplateDrift.modified.length > 0) {
+  if (command === 'install' && fullTemplateDrift.modified.some((targetPath) => targetPath !== '.gitignore')) {
     throw new Error('[INSTALL_TARGET_NOT_EMPTY] Install refuses existing blueprint paths. Use adopt to preserve existing files.');
   }
 
@@ -796,6 +817,7 @@ async function main() {
     filesRemoved: writeResult.removed?.length ?? 0,
     filesPreserved: writeResult.preserved?.length ?? 0,
     preserved: writeResult.preserved ?? [],
+    projectUpdatesAvailable,
     manifestPath: toPosix(path.join(targetDir, downstreamManifestRel(sourceManifest)))
   };
   if (jsonOutput) {
