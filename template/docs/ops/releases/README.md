@@ -27,7 +27,8 @@ slice/* or fix/* -> PR -> dev -> release/YYYY.MM.DD.N -> PR -> main
 Implementation PRs target `dev`. Release PRs target `main`, with title `Release YYYY.MM.DD.N` and completed-plan evidence.
 Release fixes also return to `dev`.
 
-CI runs scoped fast checks on PRs and pushes to `dev` and `main`. Feature branches use PR runs.
+CI runs scoped fast checks on PRs to `dev` and `main`, and on merge groups targeting `main`.
+Ordinary branch pushes do not run validation.
 Full checks run for broad or harness PRs, selected candidates, and main boundaries. Release PRs and the main merge queue also run release verification.
 See `docs/ops/automation/INTEROP_GITHUB.md` for exact scopes and candidate proof.
 These jobs run repository-defined checks. They do not deploy services or create hosted environments.
@@ -50,8 +51,12 @@ Older releases without a source tag retain their release-tag boundary.
 Before the first release tag, the default base is `origin/main`. An explicit `--base` can select another boundary.
 The merge queue verifies its proposed integration against `origin/main`.
 
-Staging, Preview, browser smoke checks, provider credentials, and deployment triggers are not mandatory blueprint features.
-Projects add applicable gates and evidence to their release contract. Multi-repository deployment coordination remains project-owned.
+For production-targeted PRs, successful current required code checks select Preview only.
+After a PR merges into production, Production selection requires verified passing candidate evidence for the exact deployment revision.
+Source, tested, and landed revisions remain distinct. Tags and release publication do not substitute for exact deployment proof.
+See `docs/deploy/README.md` for identity, target readiness, verification, and recovery requirements.
+The blueprint does not wire provider deployments. Projects implement applicable gates, completion hooks, credentials, and integration separately.
+Staging, browser smoke checks, and multi-repository deployment coordination remain project-owned.
 
 ## GitHub Releases and Notes
 

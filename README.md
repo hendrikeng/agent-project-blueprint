@@ -2,7 +2,7 @@
 
 Status: canonical
 Owner: Platform Engineering
-Last Updated: 2026-10-07
+Last Updated: 2026-10-09
 Source of Truth: This directory.
 
 Reusable blueprint for bootstrapping high-quality agent-assisted software projects.
@@ -36,7 +36,9 @@ See the [template audit and migration guide](distribution/context-refresh.md) fo
 The blueprint assumes two long-lived branches: `dev` and `main`.
 Slice and fix PRs enter `dev`. Release PRs use `release/YYYY.MM.DD.N` and target `main`.
 CI validates integration and release candidates. A merged release creates landed and source tags, plus a GitHub Release with generated notes, without deploying services.
-Staging, Preview, provider integration, and cross-repository deployment coordination remain project-specific.
+For a PR into the production branch, successful current code checks select Preview only.
+After that PR merges, Production selection requires verified passing evidence for the exact deployment revision.
+Deployment targets, provider integration, readiness, and cross-repository coordination remain project-specific. The blueprint does not activate deployments.
 The [release contract](template/docs/ops/releases/README.md) defines the defaults.
 
 Existing projects receive managed script updates through the normal reviewed synchronization process.
@@ -44,12 +46,14 @@ Workflows are project-owned starter files. Review and adapt them separately when
 PR templates and release helpers remain managed. Existing local customizations still require reviewed reconciliation.
 Do not assume that a managed-script update also installed the new tag workflow or deployment controls.
 
-Starter CI avoids feature-push duplication and selects explicit product, docs, harness, or broad fast validation.
+Root and starter CI validate PRs and merge groups without ordinary branch push validation.
+Starter CI selects explicit product, docs, harness, or broad fast validation.
 Metadata contracts do not replace code-check evidence. Base edits run code validation again.
-Full validation runs for broad or harness PRs, selected exact-SHA candidates, and main/release boundaries, not every dev push.
+Full validation runs for broad or harness PRs, selected exact-SHA candidates, PRs to main, and main merge groups.
 Standalone full verification still includes broad fast verification. CI runs those commands once.
 Workflows, project gates, and `scripts/ci/**` need explicit downstream adoption, not automatic synchronization.
 The [CI adoption guide](template/docs/ops/automation/INTEROP_GITHUB.md#ci-budget-defaults) defines required checks and deployment proof.
+The [deployment contract](template/docs/deploy/README.md) separates source, tested, landed, and deployment revisions.
 The [completion record](distribution/ci-budget-completion.md) describes the scope and evidence.
 The public blueprint CI retains its four-job OS/Node matrix unchanged. It does not use the private 5of5 minutes budget.
 

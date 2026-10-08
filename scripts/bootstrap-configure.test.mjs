@@ -42,7 +42,9 @@ for (const owner of ['@acme/platform', '@hendrikeng']) test(`bootstrap configure
   const workflow = await fs.readFile(path.join(targetDir, '.github', 'workflows', 'ci.yml'), 'utf8');
   assert.equal(workflow.includes(`CI_INSTALL_COMMAND: ${JSON.stringify('pnpm --filter "@acme/*\\tools" install')}`), true);
   assert.equal(workflow.match(/- run: corepack enable/g)?.length, 2);
-  assert.match(workflow, /push:\s+branches: \[dev, main\]/);
+  assert.match(workflow, /pull_request:\s+branches: \[dev, main\]\s+types: \[opened, synchronize, reopened, edited, ready_for_review\]/);
+  assert.match(workflow, /merge_group:\s+branches: \[main\]\s+types: \[checks_requested\]/);
+  assert.doesNotMatch(workflow, /^  push:/m);
   assert.match(workflow, /needs: \[scope, fast-gate, release-candidate-gate\]\s+if: >-\s+always\(\)/);
   assert.match(workflow, /npm run verify:full -- --skip-fast\s+if: needs.scope.outputs.scope == 'full' \|\| \(github.event_name == 'pull_request' && \(needs.scope.outputs.scope == 'broad' \|\| needs.scope.outputs.scope == 'harness'\)\)/);
   assert.match(workflow, /'Metadata Result' \|\| 'Full Gate'/);

@@ -31,8 +31,9 @@ Canonical policy still lives in repository docs.
 
 ## CI Budget Defaults
 
-The starter CI runs on PRs to `dev` and `main`, pushes to those branches, and merge groups targeting `main`.
-Feature branches run CI through their PRs, not through a second push run. New runs cancel older runs for the same PR or ref.
+The starter CI runs on PRs to `dev` and `main`, and `checks_requested` merge groups targeting `main`.
+Ordinary branch pushes do not run validation. New runs cancel older runs for the same PR or ref.
+The public blueprint CI also uses PR and merge-group events, with its existing four OS/Node combinations.
 The check names remain `Fast Gate`, `Full Gate`, and `Release Candidate Gate`.
 
 `scripts/ci/classify-change.mjs` selects explicit product, docs, harness, or broad fast validation.
@@ -41,8 +42,8 @@ Harness PRs run broad fast verification before full verification, including prod
 Every code scope retains eval integrity, context freshness, governance, path policy, plan closeout, and harness alignment checks.
 Unknown, deleted, mixed, shared-configuration, and sensitive changes select broad fast validation.
 
-Full validation runs for broad or harness PRs, selected candidates, PRs to `main`, `main` pushes, and `main` merge groups.
-Dev pushes run fast validation only. Ordinary risk PRs do not require release verification.
+Full validation runs for broad or harness PRs, selected candidates, PRs to `main`, and `main` merge groups.
+Ordinary risk PRs do not require release verification.
 Standalone `npm run verify:full` includes broad fast verification. CI uses `--skip-fast` only after successful broad fast verification in the same job.
 Agent activation additionally requires strict eval evidence through `npm run eval:verify`. Software CI does not execute agent safety evaluations.
 Full Gate aggregates the selected checks and rejects failed, skipped, or canceled required jobs. Its compatibility name does not imply full-suite execution on every PR.
@@ -66,6 +67,23 @@ Then compare the artifact with the GitHub run identity.
 Compare the evidence revision with the exact selected deployment revision. Reject missing, expired, failed, canceled, or mismatched evidence before secrets or provider effects.
 Do not trust the run title alone. This template adds no automatic deployment.
 
+### Deployment Selection
+
+The default production branch is `main`. Projects with another production branch must adapt branch filters and release contracts together.
+When a PR opens or receives code updates into that branch, select Preview only after successful current required code checks.
+Verify the current PR head, base, tested revision, and all required check results before selection.
+Metadata-only success cannot authorize Preview. A base edit needs new code checks.
+A title or body edit does not supply code evidence.
+After the PR merges into that branch, select Production only with verified passing candidate evidence for the exact deployment revision.
+An unmerged closed PR, branch push, tag, or successful metadata job cannot authorize Production.
+
+PR source heads, PR test-merge revisions, merge-group revisions, and landed revisions are distinct identities.
+The starter checkout validates the PR test-merge revision; candidate dispatch validates its selected exact source revision.
+Do not relabel either identity as the other. Bind the deployment revision to its actual passing evidence and the relevant PR.
+If a project deploys the landed revision, evidence for a different source or test-merge SHA does not satisfy exact revision proof.
+See `docs/deploy/README.md` for the target, identity, readiness, and recovery contract.
+This policy defines target selection. Each project must implement its completion hook and provider integration before automatic deployment can occur.
+
 ### Adoption in Existing Projects
 
 Workflows, `docs/governance/project-gates.json`, and `scripts/ci/**` are project-owned. A harness sync does not apply these defaults to existing applications.
@@ -75,8 +93,13 @@ Workflows, `docs/governance/project-gates.json`, and `scripts/ci/**` are project
 3. Adapt explicit risk categories to the project. Keep unknown and sensitive paths broad.
 4. Keep every project gate and its required commands at the documented fast, candidate, or release boundary.
 5. Require PR Contract, Fast Gate, and Full Gate in branch protection. Require Release Candidate Gate for release PRs.
-6. Add exact candidate proof checks to the project deployment entry point before any provider effects.
-7. Verify hosted runs for PR updates, metadata edits, base edits, dev/main pushes, merge groups, and candidate dispatches.
+6. Wire Preview selection after current code-check completion and Production selection after merge with exact candidate proof.
+   Reject stale PR/base identities and invalid evidence before secrets or provider effects. Keep the candidate dispatch trust checks intact.
+7. Record actual deployment targets, provider integration, health checks, and recovery in the owning project docs.
+   Record environment variable names and permission readiness in their owning docs.
+   Prevent provider-native PR or push triggers from bypassing the required checks. Do not infer readiness or activation from the blueprint policy.
+8. Verify hosted PR updates, metadata edits, base edits, merge groups, and candidate dispatches. Verify that ordinary branch pushes produce no validation run.
+   Exercise blocked evidence and deployment selection with the project's authorized integration. Local source assertions do not prove hosted behavior.
 
 If branch protection is unavailable, use this manual merge checklist instead of assuming automatic enforcement:
 
