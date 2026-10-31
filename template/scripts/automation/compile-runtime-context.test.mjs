@@ -27,28 +27,7 @@ test('context:compile is deterministic when sources are unchanged', async (t) =>
   assert.doesNotMatch(content, /## Mandatory Safety Rules/);
 });
 
-test('context:compile preserves adopted repository doc owner', async (t) => {
-  const rootDir = await createTemplateRepo(t);
-  const agentsPath = path.join(rootDir, 'AGENTS.md');
-  const agentsDoc = await fs.readFile(agentsPath, 'utf8');
-  await fs.writeFile(
-    agentsPath,
-    String(agentsDoc).replace(/^Owner: .+$/m, 'Owner: Platform Engineering'),
-    'utf8'
-  );
-
-  const result = runNode(path.join(rootDir, 'scripts', 'automation', 'compile-runtime-context.mjs'), [], rootDir);
-
-  assert.equal(result.status, 0, String(result.stderr));
-  const content = String(await fs.readFile(
-    path.join(rootDir, 'docs', 'generated', 'AGENT-RUNTIME-CONTEXT.md'),
-    'utf8'
-  ));
-  assert.match(content, /^Owner: Platform Engineering$/m);
-  assert.doesNotMatch(content, /^Owner: \{\{DOC_OWNER\}\}$/m);
-});
-
-test('context:compile prefers canonical owner over stale generated owner', async (t) => {
+test('context:compile uses the adopted canonical owner over a stale generated owner', async (t) => {
   const rootDir = await createTemplateRepo(t);
   const agentsPath = path.join(rootDir, 'AGENTS.md');
   const generatedPath = path.join(rootDir, 'docs', 'generated', 'AGENT-RUNTIME-CONTEXT.md');
@@ -71,6 +50,7 @@ test('context:compile prefers canonical owner over stale generated owner', async
   const content = String(await fs.readFile(generatedPath, 'utf8'));
   assert.match(content, /^Owner: Platform Engineering$/m);
   assert.doesNotMatch(content, /^Owner: Stale Generated Owner$/m);
+  assert.doesNotMatch(content, /^Owner: \{\{DOC_OWNER\}\}$/m);
 });
 
 test('context:compile rejects output paths outside the repository', async (t) => {

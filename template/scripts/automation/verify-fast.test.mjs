@@ -6,11 +6,12 @@ import { createTemplateRepo, runNode } from './test-helpers.mjs';
 
 test('verify-fast dry-run lists the flat queue safety checks', async (t) => {
   const rootDir = await createTemplateRepo(t);
-  const result = runNode(path.join(rootDir, 'scripts', 'automation', 'verify-fast.mjs'), ['--dry-run'], rootDir);
+  const result = runNode(path.join(rootDir, 'scripts', 'automation', 'verify-fast.mjs'), ['--dry-run'], rootDir, { CI: '1' });
 
   assert.equal(result.status, 0, String(result.stderr));
   const stdout = String(result.stdout);
   assert.match(stdout, /compile-runtime-context/);
+  assert.match(stdout, /repair-plan-references\.mjs --check/);
   assert.match(stdout, /check-plan-metadata/);
   assert.match(stdout, /check-harness-alignment/);
   assert.doesNotMatch(stdout, /check-performance-budgets/);
@@ -58,17 +59,4 @@ test('verify-fast can scope plan metadata verification to one plan', async (t) =
   assert.equal(result.status, 0, String(result.stderr));
   assert.match(String(result.stdout), /repair-plan-references\.mjs --check/);
   assert.match(String(result.stdout), /check-plan-metadata\.mjs --plan-id red-inbox/);
-});
-
-test('verify-fast checks plan references without mutation in every environment', async (t) => {
-  const rootDir = await createTemplateRepo(t);
-  const result = runNode(
-    path.join(rootDir, 'scripts', 'automation', 'verify-fast.mjs'),
-    ['--dry-run'],
-    rootDir,
-    { CI: '1' }
-  );
-
-  assert.equal(result.status, 0, String(result.stderr));
-  assert.match(String(result.stdout), /repair-plan-references\.mjs --check/);
 });

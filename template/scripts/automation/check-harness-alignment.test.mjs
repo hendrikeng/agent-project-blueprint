@@ -28,58 +28,20 @@ test('harness:verify preserves project verification scripts but validates bluepr
   assert.match(String(drift.stderr), /SCRIPT_MISMATCH.*verify:fast/);
 });
 
-test('harness:verify fails when a CI-invoked package script is missing', async (t) => {
+test('harness:verify fails when a required package script is missing', async (t) => {
   const rootDir = await createTemplateRepo(t);
   const packageJsonPath = path.join(rootDir, 'package.json');
-  const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf8'));
-  delete packageJson.scripts['pr:verify'];
-  await fs.writeFile(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`, 'utf8');
+  const original = await fs.readFile(packageJsonPath, 'utf8');
+  for (const script of ['pr:verify', 'plans:verify:closeout', 'release:verify']) {
+    const packageJson = JSON.parse(original);
+    delete packageJson.scripts[script];
+    await fs.writeFile(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`, 'utf8');
 
-  const result = runNode(
-    path.join(rootDir, 'scripts', 'automation', 'check-harness-alignment.mjs'),
-    [],
-    rootDir
-  );
+    const result = runNode(path.join(rootDir, 'scripts/automation/check-harness-alignment.mjs'), [], rootDir);
 
-  assert.equal(result.status, 1);
-  assert.match(String(result.stderr), /SCRIPT_MISMATCH/);
-  assert.match(String(result.stderr), /pr:verify/);
-});
-
-test('harness:verify fails when plan closeout verification is missing', async (t) => {
-  const rootDir = await createTemplateRepo(t);
-  const packageJsonPath = path.join(rootDir, 'package.json');
-  const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf8'));
-  delete packageJson.scripts['plans:verify:closeout'];
-  await fs.writeFile(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`, 'utf8');
-
-  const result = runNode(
-    path.join(rootDir, 'scripts', 'automation', 'check-harness-alignment.mjs'),
-    [],
-    rootDir
-  );
-
-  assert.equal(result.status, 1);
-  assert.match(String(result.stderr), /SCRIPT_MISMATCH/);
-  assert.match(String(result.stderr), /plans:verify:closeout/);
-});
-
-test('harness:verify fails when release verification is missing', async (t) => {
-  const rootDir = await createTemplateRepo(t);
-  const packageJsonPath = path.join(rootDir, 'package.json');
-  const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf8'));
-  delete packageJson.scripts['release:verify'];
-  await fs.writeFile(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`, 'utf8');
-
-  const result = runNode(
-    path.join(rootDir, 'scripts', 'automation', 'check-harness-alignment.mjs'),
-    [],
-    rootDir
-  );
-
-  assert.equal(result.status, 1);
-  assert.match(String(result.stderr), /SCRIPT_MISMATCH/);
-  assert.match(String(result.stderr), /release:verify/);
+    assert.equal(result.status, 1, script);
+    assert.match(String(result.stderr), new RegExp(`SCRIPT_MISMATCH.*${script}`));
+  }
 });
 
 test('harness:verify fails when required domain section is missing', async (t) => {
