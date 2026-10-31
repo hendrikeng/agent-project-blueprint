@@ -6,7 +6,6 @@ import {
   metadataValue,
   parseMetadata,
   parseMustLandChecklist,
-  parseValidationLanes,
   setMetadataFields
 } from './plan-metadata.mjs';
 
@@ -23,7 +22,7 @@ test('parseMetadata reads bullet metadata from the Metadata section', () => {
 
   const metadata = parseMetadata(content);
   assert.equal(metadataValue(metadata, 'Plan-ID'), 'red-inbox');
-  assert.deepEqual(parseValidationLanes(metadataValue(metadata, 'Validation-Lanes'), []), ['always', 'host-required']);
+  assert.equal(metadataValue(metadata, 'Validation-Lanes'), 'always, host-required');
 });
 
 test('parseMustLandChecklist extracts stable must-land identifiers', () => {

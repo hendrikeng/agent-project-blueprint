@@ -257,16 +257,6 @@ export function parseSecurityApproval(value, fallback = '') {
   return SECURITY_APPROVAL_VALUES.has(normalized) ? normalized : fallback;
 }
 
-export function parseValidationLanes(rawValue, fallback = []) {
-  const normalized = parseListField(rawValue)
-    .map((entry) => String(entry).trim().toLowerCase())
-    .filter((entry) => VALIDATION_LANES.has(entry));
-  if (normalized.length === 0) {
-    return fallback;
-  }
-  return [...new Set(normalized)];
-}
-
 export function normalizeStatus(value) {
   return String(value ?? '').trim().toLowerCase();
 }
