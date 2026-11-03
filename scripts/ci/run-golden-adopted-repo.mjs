@@ -676,8 +676,8 @@ function runCommand(repoDir, command, extraEnv = {}) {
     cwd: repoDir,
     shell: true,
     stdio: 'inherit',
-    // This repository has its own release history, not the parent Actions commit.
-    env: { ...process.env, ...extraEnv, GITHUB_ACTIONS: 'false' }
+    // This repository has its own release history, not the parent Actions commit or PR.
+    env: { ...process.env, ...extraEnv, GITHUB_ACTIONS: 'false', GITHUB_HEAD_REF: '', GITHUB_BASE_REF: '', GITHUB_EVENT_NAME: '', GITHUB_EVENT_PATH: '' }
   });
   if (result.error) {
     throw result.error;
