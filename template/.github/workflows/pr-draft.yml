@@ -6,7 +6,9 @@ on:
   pull_request_target:
     types: [opened, reopened]
 
+# convertPullRequestToDraft refuses GITHUB_TOKEN with pull-requests: write alone. This job checks out no code.
 permissions:
+  contents: write
   pull-requests: write
 
 jobs:

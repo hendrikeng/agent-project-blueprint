@@ -157,7 +157,7 @@ test('risk PRs run full once ci:full is added, and Full Gate requires it', () =>
 test('drafts and ci:full label workflows stay small and least-privileged', () => {
   const draft = workflow('pr-draft');
   assert.match(draft, /pull_request_target:\s+types: \[opened, reopened\]/);
-  assert.match(draft, /permissions:\n  pull-requests: write\n\n/);
+  assert.match(draft, /permissions:\n  contents: write\n  pull-requests: write\n\n/);
   assert.match(draft, /timeout-minutes: 2/);
   assert.match(draft, /!github.event.pull_request.draft &&\s+github.event.pull_request.user.type != 'Bot' &&\s+!startsWith\(github.event.pull_request.head.ref, 'release\/'\)/);
   assert.match(draft, /gh pr ready --undo "\$PR_URL"/);
