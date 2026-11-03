@@ -68,3 +68,8 @@ Do not add duplicate tests or repeat passing checks without new changes or unres
 Use explicit paths for Git staging. Never unstage, revert, or delete another person's work.
 Authorization is scoped to the action and target. A retry or handoff does not expand it.
 See `docs/design-docs/GIT-SAFETY.md` and `docs/agent-hardening/TOOL_POLICY.md` for sensitive operations.
+
+## CI Cost And Merge Path
+
+CI minutes cost money. Keep each PR a draft while you iterate, and push only after focused local checks.
+Before you mark a PR ready, add `ci:full`, or merge, read `docs/ops/automation/INTEROP_GITHUB.md#ci-cost-and-merge-path`.

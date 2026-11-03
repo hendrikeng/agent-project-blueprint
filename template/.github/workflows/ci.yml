@@ -3,7 +3,7 @@ name: ci
 on:
   pull_request:
     branches: [dev, main]
-    types: [opened, synchronize, reopened, edited, ready_for_review]
+    types: [opened, synchronize, reopened, edited, ready_for_review, labeled]
   merge_group:
     branches: [main]
     types: [checks_requested]
@@ -11,9 +11,9 @@ on:
 permissions:
   contents: read
 
-# Metadata must not cancel an in-flight code check for the same PR.
+# Drafts, metadata edits, and labels other than ci:full skip CI and must not cancel an in-flight code check.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name == 'pull_request' && github.event.action == 'edited' && !github.event.changes.base && 'metadata' || 'code' }}
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name == 'pull_request' && (github.event.pull_request.draft || (github.event.action == 'edited' && !github.event.changes.base) || (github.event.action == 'labeled' && github.event.label.name != 'ci:full')) && 'metadata' || 'code' }}
   cancel-in-progress: true
 
 env:
@@ -27,6 +27,7 @@ jobs:
     name: PR Contract
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    if: ${{ !github.event.pull_request.draft }}
     outputs:
       scope: ${{ steps.scope.outputs.scope }}
     steps:
@@ -45,12 +46,14 @@ jobs:
 
   fast-gate:
     # Metadata uses different names: it must never replace code-check evidence.
-    name: ${{ github.event_name == 'pull_request' && github.event.action == 'edited' && !github.event.changes.base && 'Metadata Only' || 'Fast Gate' }}
+    name: ${{ github.event_name == 'pull_request' && (github.event.pull_request.draft || (github.event.action == 'edited' && !github.event.changes.base) || (github.event.action == 'labeled' && github.event.label.name != 'ci:full')) && 'Metadata Only' || 'Fast Gate' }}
     needs: scope
     if: >-
-      always() && !(github.event_name == 'pull_request' && github.event.action == 'edited' && !github.event.changes.base)
+      always() && !(github.event_name == 'pull_request' && (github.event.pull_request.draft || (github.event.action == 'edited' && !github.event.changes.base) || (github.event.action == 'labeled' && github.event.label.name != 'ci:full')))
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    outputs:
+      full: ${{ steps.full.outcome }}
     steps:
       - name: Require a valid scope and contract
         env:
@@ -82,13 +85,15 @@ jobs:
         run: |
           if [ "$SCOPE" = full ] || { [ "$GITHUB_EVENT_NAME" = pull_request ] && [ "$SCOPE" = harness ]; }; then SCOPE=broad; fi
           npm run verify:fast -- --scope "$SCOPE"
+      # Heavy tier: merge groups, or once per PR head when someone adds the ci:full label.
       - run: npm run verify:full -- --skip-fast
-        if: needs.scope.outputs.scope == 'full' || (github.event_name == 'pull_request' && (needs.scope.outputs.scope == 'broad' || needs.scope.outputs.scope == 'harness'))
+        id: full
+        if: (needs.scope.outputs.scope == 'full' || (github.event_name == 'pull_request' && (needs.scope.outputs.scope == 'broad' || needs.scope.outputs.scope == 'harness'))) && (github.event_name == 'merge_group' || github.event.label.name == 'ci:full')
 
   release-candidate-gate:
-    name: ${{ github.event_name == 'pull_request' && github.event.action == 'edited' && !github.event.changes.base && 'Metadata Release (not evidence)' || 'Release Candidate Gate' }}
+    name: ${{ github.event_name == 'pull_request' && (github.event.pull_request.draft || (github.event.action == 'edited' && !github.event.changes.base) || (github.event.action == 'labeled' && github.event.label.name != 'ci:full')) && 'Metadata Release (not evidence)' || 'Release Candidate Gate' }}
     if: >-
-      !(github.event_name == 'pull_request' && github.event.action == 'edited' && !github.event.changes.base) &&
+      !(github.event_name == 'pull_request' && (github.event.pull_request.draft || (github.event.action == 'edited' && !github.event.changes.base) || (github.event.action == 'labeled' && github.event.label.name != 'ci:full'))) &&
       ((github.event_name == 'pull_request' && github.base_ref == 'main') || github.event_name == 'merge_group')
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -116,10 +121,10 @@ jobs:
           RELEASE_ALLOW_ANY_BRANCH: "true"
 
   full-gate:
-    name: ${{ github.event_name == 'pull_request' && github.event.action == 'edited' && !github.event.changes.base && 'Metadata Result' || 'Full Gate' }}
+    name: ${{ github.event_name == 'pull_request' && (github.event.pull_request.draft || (github.event.action == 'edited' && !github.event.changes.base) || (github.event.action == 'labeled' && github.event.label.name != 'ci:full')) && 'Metadata Result' || 'Full Gate' }}
     needs: [scope, fast-gate, release-candidate-gate]
     if: >-
-      always() && !(github.event_name == 'pull_request' && github.event.action == 'edited' && !github.event.changes.base)
+      always() && !(github.event_name == 'pull_request' && (github.event.pull_request.draft || (github.event.action == 'edited' && !github.event.changes.base) || (github.event.action == 'labeled' && github.event.label.name != 'ci:full')))
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -129,8 +134,14 @@ jobs:
           FAST_RESULT: ${{ needs.fast-gate.result }}
           RELEASE_RESULT: ${{ needs.release-candidate-gate.result }}
           RELEASE_REQUIRED: ${{ needs.scope.outputs.scope == 'full' && (github.event_name == 'pull_request' || github.event_name == 'merge_group') }}
+          FULL_RESULT: ${{ needs.fast-gate.outputs.full }}
+          FULL_REQUIRED: ${{ needs.scope.outputs.scope == 'full' || (github.event_name == 'pull_request' && (needs.scope.outputs.scope == 'broad' || needs.scope.outputs.scope == 'harness')) }}
         run: |
           test "$SCOPE_RESULT" = success
           test "$FAST_RESULT" = success
+          if [ "$FULL_REQUIRED" = true ] && [ "$FULL_RESULT" != success ]; then
+            echo 'This change needs the heavy tier. Add the ci:full label when the PR is final.' >&2
+            exit 1
+          fi
           if [ "$RELEASE_REQUIRED" = true ]; then test "$RELEASE_RESULT" = success; fi
           echo 'Selected CI scope passed; only ci-candidate evidence authorizes a deployment candidate.'
