@@ -1,8 +1,9 @@
 name: ci-full-label
 
 # A new push invalidates heavy-tier approval. Add ci:full again when the PR is final.
+# pull_request_target gives forks and Dependabot a write token. Never check out or run PR code here.
 on:
-  pull_request:
+  pull_request_target:
     types: [synchronize]
 
 permissions:
@@ -11,7 +12,7 @@ permissions:
 jobs:
   remove:
     name: Remove ci:full
-    if: contains(github.event.pull_request.labels.*.name, 'ci:full') && github.event.pull_request.head.repo.full_name == github.repository
+    if: contains(github.event.pull_request.labels.*.name, 'ci:full')
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:

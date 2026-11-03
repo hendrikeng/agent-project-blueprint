@@ -59,7 +59,8 @@ test('default CI retains required aggregates, contract, and release coverage', (
 test('PR metadata skips gate runners without replacing or canceling real validation', () => {
   const ci = workflow('ci');
   // GitHub expressions return null for missing properties; optional chaining matches that.
-  const evaluate = (expression, github) => new Function('github', 'always', `return (${expression.replace(/\.(?=[a-z_])/g, '?.')})`)(github, () => true);
+  const startsWith = (value, prefix) => String(value ?? '').startsWith(prefix);
+  const evaluate = (expression, github) => new Function('github', 'always', 'startsWith', `return (${expression.replace(/\.(?=[a-z_])/g, '?.')})`)(github, () => true, startsWith);
   const group = (github) => ci.match(/^  group: (.+)$/m)[1]
     .replace(/\$\{\{ (.+?) \}\}/g, (_, expression) => evaluate(expression, github));
   const jobs = ['fast-gate', 'full-gate', 'release-candidate-gate'].map((id) => {
@@ -68,22 +69,30 @@ test('PR metadata skips gate runners without replacing or canceling real validat
     return { id, condition, name: block.match(/^    name: \$\{\{ (.+) \}\}$/m)[1] };
   });
   const requiredNames = ['Fast Gate', 'Full Gate', 'Release Candidate Gate'];
+  const scopeCondition = ci.split('  scope:\n')[1].match(/^    if: \$\{\{ (.+) \}\}$/m)[1];
   for (const base of ['dev', 'main']) {
-    const real = { event_name: 'pull_request', workflow: 'ci', ref: 'refs/pull/7/merge',
-      event: { action: 'synchronize', changes: {}, pull_request: { number: 7 } }, base_ref: base };
-    for (const [action, changes, metadata, label, draft = false] of [
+    const pr = { number: 7, user: { type: 'User' }, head: { ref: 'slice/x', repo: { full_name: 'o/r' } } };
+    const real = { event_name: 'pull_request', workflow: 'ci', ref: 'refs/pull/7/merge', repository: 'o/r',
+      event: { action: 'synchronize', changes: {}, pull_request: pr }, base_ref: base };
+    for (const [action, changes, metadata, label, draft = false, override = {}] of [
       ['edited', { title: { from: 'old title' } }, true],
       ['edited', { body: { from: 'old body' } }, true],
       ['edited', {}, true],
       ['edited', { base: { ref: { from: 'other' } } }, false],
       ['edited', { base: {}, body: { from: 'old body' } }, false],
-      ['opened', {}, false], ['synchronize', {}, false], ['reopened', {}, false],
+      // pr-draft.yml converts human same-repo PRs; bots, release branches, and forks run CI on open.
+      ['opened', {}, true], ['reopened', {}, true], ['synchronize', {}, false],
+      ['opened', {}, false, undefined, false, { user: { type: 'Bot' } }],
+      ['opened', {}, false, undefined, false, { head: { ref: 'release/2026.01.01.1', repo: { full_name: 'o/r' } } }],
+      ['reopened', {}, false, undefined, false, { head: { ref: 'slice/x', repo: { full_name: 'fork/r' } } }],
       ['ready_for_review', {}, false],
       ['labeled', {}, true, { name: 'bug' }], ['labeled', {}, false, { name: 'ci:full' }],
       ['synchronize', {}, true, undefined, true], ['labeled', {}, true, { name: 'ci:full' }, true]
     ]) {
-      const github = { ...real, event: { ...real.event, action, changes, label, pull_request: { number: 7, draft } } };
-      const caseName = `${base}: ${action} ${JSON.stringify(changes)} ${JSON.stringify(label)} draft=${draft}`;
+      const github = { ...real, event: { ...real.event, action, changes, label, pull_request: { ...pr, draft, ...override } } };
+      const caseName = `${base}: ${action} ${JSON.stringify({ changes, label, draft, override })}`;
+      const skipped = draft || (['opened', 'reopened'].includes(action) && !Object.keys(override).length);
+      assert.equal(evaluate(scopeCondition, github), !skipped, `${caseName}: PR Contract scheduling`);
       assert.equal(group(github) === group(real), !metadata, `${caseName}: cancellation group`);
       for (const { id, condition, name } of jobs) {
         assert.equal(evaluate(condition, github), !metadata && (id !== 'release-candidate-gate' || base === 'main'), `${caseName}: ${id} scheduling`);
@@ -153,7 +162,7 @@ test('drafts and ci:full label workflows stay small and least-privileged', () =>
   assert.match(draft, /!github.event.pull_request.draft &&\s+github.event.pull_request.user.type != 'Bot' &&\s+!startsWith\(github.event.pull_request.head.ref, 'release\/'\)/);
   assert.match(draft, /gh pr ready --undo "\$PR_URL"/);
   const label = workflow('ci-full-label');
-  assert.match(label, /types: \[synchronize\]/);
+  assert.match(label, /pull_request_target:\s+types: \[synchronize\]/);
   assert.match(label, /permissions:\n  pull-requests: write\n\n/);
   assert.match(label, /issues\/\$PR\/labels\/ci%3Afull/);
   for (const content of [draft, label]) assert.doesNotMatch(content, /uses:|checkout|paths:/);

@@ -11,9 +11,9 @@ on:
 permissions:
   contents: read
 
-# Drafts, metadata edits, and labels other than ci:full skip CI and must not cancel an in-flight code check.
+# Drafts, PRs that pr-draft.yml converts, metadata edits, and labels other than ci:full skip CI and must not cancel an in-flight code check.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name == 'pull_request' && (github.event.pull_request.draft || (github.event.action == 'edited' && !github.event.changes.base) || (github.event.action == 'labeled' && github.event.label.name != 'ci:full')) && 'metadata' || 'code' }}
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name == 'pull_request' && (github.event.pull_request.draft || ((github.event.action == 'opened' || github.event.action == 'reopened') && github.event.pull_request.user.type != 'Bot' && !startsWith(github.event.pull_request.head.ref, 'release/') && github.event.pull_request.head.repo.full_name == github.repository) || (github.event.action == 'edited' && !github.event.changes.base) || (github.event.action == 'labeled' && github.event.label.name != 'ci:full')) && 'metadata' || 'code' }}
   cancel-in-progress: true
 
 env:
@@ -27,7 +27,8 @@ jobs:
     name: PR Contract
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    if: ${{ !github.event.pull_request.draft }}
+    # pr-draft.yml converts these opened and reopened PRs; CI starts again on ready_for_review.
+    if: ${{ !(github.event.pull_request.draft || ((github.event.action == 'opened' || github.event.action == 'reopened') && github.event.pull_request.user.type != 'Bot' && !startsWith(github.event.pull_request.head.ref, 'release/') && github.event.pull_request.head.repo.full_name == github.repository)) }}
     outputs:
       scope: ${{ steps.scope.outputs.scope }}
     steps:
@@ -46,10 +47,10 @@ jobs:
 
   fast-gate:
     # Metadata uses different names: it must never replace code-check evidence.
-    name: ${{ github.event_name == 'pull_request' && (github.event.pull_request.draft || (github.event.action == 'edited' && !github.event.changes.base) || (github.event.action == 'labeled' && github.event.label.name != 'ci:full')) && 'Metadata Only' || 'Fast Gate' }}
+    name: ${{ github.event_name == 'pull_request' && (github.event.pull_request.draft || ((github.event.action == 'opened' || github.event.action == 'reopened') && github.event.pull_request.user.type != 'Bot' && !startsWith(github.event.pull_request.head.ref, 'release/') && github.event.pull_request.head.repo.full_name == github.repository) || (github.event.action == 'edited' && !github.event.changes.base) || (github.event.action == 'labeled' && github.event.label.name != 'ci:full')) && 'Metadata Only' || 'Fast Gate' }}
     needs: scope
     if: >-
-      always() && !(github.event_name == 'pull_request' && (github.event.pull_request.draft || (github.event.action == 'edited' && !github.event.changes.base) || (github.event.action == 'labeled' && github.event.label.name != 'ci:full')))
+      always() && !(github.event_name == 'pull_request' && (github.event.pull_request.draft || ((github.event.action == 'opened' || github.event.action == 'reopened') && github.event.pull_request.user.type != 'Bot' && !startsWith(github.event.pull_request.head.ref, 'release/') && github.event.pull_request.head.repo.full_name == github.repository) || (github.event.action == 'edited' && !github.event.changes.base) || (github.event.action == 'labeled' && github.event.label.name != 'ci:full')))
     runs-on: ubuntu-latest
     timeout-minutes: 30
     outputs:
@@ -91,9 +92,9 @@ jobs:
         if: (needs.scope.outputs.scope == 'full' || (github.event_name == 'pull_request' && (needs.scope.outputs.scope == 'broad' || needs.scope.outputs.scope == 'harness'))) && (github.event_name == 'merge_group' || github.event.label.name == 'ci:full')
 
   release-candidate-gate:
-    name: ${{ github.event_name == 'pull_request' && (github.event.pull_request.draft || (github.event.action == 'edited' && !github.event.changes.base) || (github.event.action == 'labeled' && github.event.label.name != 'ci:full')) && 'Metadata Release (not evidence)' || 'Release Candidate Gate' }}
+    name: ${{ github.event_name == 'pull_request' && (github.event.pull_request.draft || ((github.event.action == 'opened' || github.event.action == 'reopened') && github.event.pull_request.user.type != 'Bot' && !startsWith(github.event.pull_request.head.ref, 'release/') && github.event.pull_request.head.repo.full_name == github.repository) || (github.event.action == 'edited' && !github.event.changes.base) || (github.event.action == 'labeled' && github.event.label.name != 'ci:full')) && 'Metadata Release (not evidence)' || 'Release Candidate Gate' }}
     if: >-
-      !(github.event_name == 'pull_request' && (github.event.pull_request.draft || (github.event.action == 'edited' && !github.event.changes.base) || (github.event.action == 'labeled' && github.event.label.name != 'ci:full'))) &&
+      !(github.event_name == 'pull_request' && (github.event.pull_request.draft || ((github.event.action == 'opened' || github.event.action == 'reopened') && github.event.pull_request.user.type != 'Bot' && !startsWith(github.event.pull_request.head.ref, 'release/') && github.event.pull_request.head.repo.full_name == github.repository) || (github.event.action == 'edited' && !github.event.changes.base) || (github.event.action == 'labeled' && github.event.label.name != 'ci:full'))) &&
       ((github.event_name == 'pull_request' && github.base_ref == 'main') || github.event_name == 'merge_group')
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -121,10 +122,10 @@ jobs:
           RELEASE_ALLOW_ANY_BRANCH: "true"
 
   full-gate:
-    name: ${{ github.event_name == 'pull_request' && (github.event.pull_request.draft || (github.event.action == 'edited' && !github.event.changes.base) || (github.event.action == 'labeled' && github.event.label.name != 'ci:full')) && 'Metadata Result' || 'Full Gate' }}
+    name: ${{ github.event_name == 'pull_request' && (github.event.pull_request.draft || ((github.event.action == 'opened' || github.event.action == 'reopened') && github.event.pull_request.user.type != 'Bot' && !startsWith(github.event.pull_request.head.ref, 'release/') && github.event.pull_request.head.repo.full_name == github.repository) || (github.event.action == 'edited' && !github.event.changes.base) || (github.event.action == 'labeled' && github.event.label.name != 'ci:full')) && 'Metadata Result' || 'Full Gate' }}
     needs: [scope, fast-gate, release-candidate-gate]
     if: >-
-      always() && !(github.event_name == 'pull_request' && (github.event.pull_request.draft || (github.event.action == 'edited' && !github.event.changes.base) || (github.event.action == 'labeled' && github.event.label.name != 'ci:full')))
+      always() && !(github.event_name == 'pull_request' && (github.event.pull_request.draft || ((github.event.action == 'opened' || github.event.action == 'reopened') && github.event.pull_request.user.type != 'Bot' && !startsWith(github.event.pull_request.head.ref, 'release/') && github.event.pull_request.head.repo.full_name == github.repository) || (github.event.action == 'edited' && !github.event.changes.base) || (github.event.action == 'labeled' && github.event.label.name != 'ci:full')))
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
