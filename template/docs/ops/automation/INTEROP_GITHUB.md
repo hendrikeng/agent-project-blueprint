@@ -29,6 +29,18 @@ Canonical policy still lives in repository docs.
 - `release/YYYY.MM.DD.N -> main`: release promotion using the release PR template.
 - Repositories that use different branch names must update workflow YAML, PR verification, release docs, and this mapping together.
 
+## CI Cost And Merge Path
+
+CI minutes cost money. Each PR and each push to a ready PR starts a CI run.
+
+- Open one PR for each task. Group related small changes into one PR.
+- Open the PR as a draft. Keep it a draft while you iterate. Drafts run no CI.
+- Run focused local checks before each push. Batch fixes into one push.
+- When the work is complete, mark the PR ready once. This runs the fast tier.
+- When the PR is final, add the `ci:full` label once. This runs the heavy tier. A new push removes the label.
+- Merge only with `gh pr merge --squash --match-head-commit <sha>`, where `<sha>` has a green `Full Gate`.
+- Never merge over a red, pending, or skipped required check. Rerun a failed job only after you find the cause.
+
 ## CI Budget Defaults
 
 The starter CI runs on PRs to `dev` and `main`, and `checks_requested` merge groups targeting `main`.
@@ -43,11 +55,16 @@ Every code scope retains eval integrity, context freshness, governance, path pol
 Unknown, deleted, mixed, shared-configuration, and sensitive changes select broad fast validation.
 
 Full validation runs for broad or harness PRs, selected candidates, PRs to `main`, and `main` merge groups.
+On a PR, full validation runs only in the run that the `ci:full` label starts. Full Gate fails until that run passes.
+`ci-full-label.yml` removes `ci:full` on each new push, so each PR head pays for the heavy tier once.
+It uses `pull_request_target` so that fork and Dependabot PRs also lose the label. It never checks out PR code.
 Ordinary risk PRs do not require release verification.
 Standalone `npm run verify:full` includes broad fast verification. CI uses `--skip-fast` only after successful broad fast verification in the same job.
 Agent activation additionally requires strict eval evidence through `npm run eval:verify`. Software CI does not execute agent safety evaluations.
 Full Gate aggregates the selected checks and rejects failed, skipped, or canceled required jobs. Its compatibility name does not imply full-suite execution on every PR.
 
+Draft PRs run no CI. `ready_for_review` starts the fast tier. `pr-draft.yml` converts a new non-draft human PR to a draft. CI skips that opened event.
+Labels other than `ci:full` skip gate jobs and cannot cancel a running heavy run.
 PR edits without base changes run only `PR Contract`. Gate jobs are skipped under metadata-only names, so they cannot replace failed or missing code-check evidence.
 Base edits and ready-for-review events run code validation again. Metadata cancellation groups cannot cancel code runs.
 PRs to `main` and merge groups retain release checks. Cache placeholders remain unused.

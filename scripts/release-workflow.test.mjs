@@ -38,18 +38,18 @@ test('default CI retains required aggregates, contract, and release coverage', (
     assert.deepEqual([...events.matchAll(/^  ([a-z_]+):/gm)].map(match => match[1]), ['pull_request', 'merge_group']);
     assert.match(events, /merge_group:\n(?:    branches: \[main\]\n)?    types: \[checks_requested\]/);
   }
-  assert.match(ci, /pull_request:\s+branches: \[dev, main\]\s+types: \[opened, synchronize, reopened, edited, ready_for_review\]/);
+  assert.match(ci, /pull_request:\s+branches: \[dev, main\]\s+types: \[opened, synchronize, reopened, edited, ready_for_review, labeled\]/);
   assert.match(ci, /merge_group:\s+branches: \[main\]/);
   assert.doesNotMatch(ci, /slice\/\*\*|fix\/\*\*/);
   assert.match(ci, /cancel-in-progress: true/);
-  assert.match(ci, /&& !github.event.changes.base && 'metadata' \|\| 'code'/);
+  assert.match(ci, /github.event.label.name != 'ci:full'\)\) && 'metadata' \|\| 'code'/);
   for (const name of ['Fast Gate', 'Full Gate', 'Release Candidate Gate']) {
     assert.ok(ci.includes(`|| '${name}'`), `Metadata must not replace ${name}`);
   }
   assert.match(ci, /name: PR Contract/);
   assert.match(ci, /needs: \[scope, fast-gate, release-candidate-gate\]\s+if: >-\s+always\(\)/);
   for (const result of ['SCOPE_RESULT', 'FAST_RESULT', 'RELEASE_RESULT']) assert.ok(ci.includes(`test "$${result}" = success`));
-  assert.match(ci, /npm run verify:full -- --skip-fast\s+if: needs.scope.outputs.scope == 'full'/);
+  assert.match(ci, /npm run verify:full -- --skip-fast\s+id: full\s+if: \(needs.scope.outputs.scope == 'full'/);
   assert.match(ci, /RELEASE_HEAD_REF: \$\{\{ github.event.pull_request.head.sha \}\}/);
   assert.equal((ci.match(/run: npm run project:gates:release/g) ?? []).length, 2);
   assert.match(ci, /RELEASE_BASE_REF: origin\/main\s+RELEASE_ALLOW_ANY_BRANCH: "true"/);
@@ -58,7 +58,9 @@ test('default CI retains required aggregates, contract, and release coverage', (
 
 test('PR metadata skips gate runners without replacing or canceling real validation', () => {
   const ci = workflow('ci');
-  const evaluate = (expression, github) => new Function('github', 'always', `return (${expression})`)(github, () => true);
+  // GitHub expressions return null for missing properties; optional chaining matches that.
+  const startsWith = (value, prefix) => String(value ?? '').startsWith(prefix);
+  const evaluate = (expression, github) => new Function('github', 'always', 'startsWith', `return (${expression.replace(/\.(?=[a-z_])/g, '?.')})`)(github, () => true, startsWith);
   const group = (github) => ci.match(/^  group: (.+)$/m)[1]
     .replace(/\$\{\{ (.+?) \}\}/g, (_, expression) => evaluate(expression, github));
   const jobs = ['fast-gate', 'full-gate', 'release-candidate-gate'].map((id) => {
@@ -67,25 +69,35 @@ test('PR metadata skips gate runners without replacing or canceling real validat
     return { id, condition, name: block.match(/^    name: \$\{\{ (.+) \}\}$/m)[1] };
   });
   const requiredNames = ['Fast Gate', 'Full Gate', 'Release Candidate Gate'];
+  const scopeCondition = ci.split('  scope:\n')[1].match(/^    if: \$\{\{ (.+) \}\}$/m)[1];
   for (const base of ['dev', 'main']) {
-    const real = { event_name: 'pull_request', workflow: 'ci', ref: 'refs/pull/7/merge',
-      event: { action: 'synchronize', changes: {}, pull_request: { number: 7 } }, base_ref: base };
-    for (const [action, changes, metadata] of [
+    const pr = { number: 7, user: { type: 'User' }, head: { ref: 'slice/x', repo: { full_name: 'o/r' } } };
+    const real = { event_name: 'pull_request', workflow: 'ci', ref: 'refs/pull/7/merge', repository: 'o/r',
+      event: { action: 'synchronize', changes: {}, pull_request: pr }, base_ref: base };
+    for (const [action, changes, metadata, label, draft = false, override = {}] of [
       ['edited', { title: { from: 'old title' } }, true],
       ['edited', { body: { from: 'old body' } }, true],
       ['edited', {}, true],
       ['edited', { base: { ref: { from: 'other' } } }, false],
       ['edited', { base: {}, body: { from: 'old body' } }, false],
-      ['opened', {}, false], ['synchronize', {}, false], ['reopened', {}, false],
-      ['ready_for_review', {}, false]
+      // pr-draft.yml converts human same-repo PRs; bots, release branches, and forks run CI on open.
+      ['opened', {}, true], ['reopened', {}, true], ['synchronize', {}, false],
+      ['opened', {}, false, undefined, false, { user: { type: 'Bot' } }],
+      ['opened', {}, false, undefined, false, { head: { ref: 'release/2026.01.01.1', repo: { full_name: 'o/r' } } }],
+      ['reopened', {}, false, undefined, false, { head: { ref: 'slice/x', repo: { full_name: 'fork/r' } } }],
+      ['ready_for_review', {}, false],
+      ['labeled', {}, true, { name: 'bug' }], ['labeled', {}, false, { name: 'ci:full' }],
+      ['synchronize', {}, true, undefined, true], ['labeled', {}, true, { name: 'ci:full' }, true]
     ]) {
-      const github = { ...real, event: { ...real.event, action, changes } };
-      const label = `${base}: ${action} ${JSON.stringify(changes)}`;
-      assert.equal(group(github) === group(real), !metadata, `${label}: cancellation group`);
+      const github = { ...real, event: { ...real.event, action, changes, label, pull_request: { ...pr, draft, ...override } } };
+      const caseName = `${base}: ${action} ${JSON.stringify({ changes, label, draft, override })}`;
+      const skipped = draft || (['opened', 'reopened'].includes(action) && !Object.keys(override).length);
+      assert.equal(evaluate(scopeCondition, github), !skipped, `${caseName}: PR Contract scheduling`);
+      assert.equal(group(github) === group(real), !metadata, `${caseName}: cancellation group`);
       for (const { id, condition, name } of jobs) {
-        assert.equal(evaluate(condition, github), !metadata && (id !== 'release-candidate-gate' || base === 'main'), `${label}: ${id} scheduling`);
+        assert.equal(evaluate(condition, github), !metadata && (id !== 'release-candidate-gate' || base === 'main'), `${caseName}: ${id} scheduling`);
         const checkName = evaluate(name, github);
-        if (metadata) assert.ok(!requiredNames.includes(checkName), `${label}: skipped job must not replace required evidence`);
+        if (metadata) assert.ok(!requiredNames.includes(checkName), `${caseName}: skipped job must not replace required evidence`);
         else assert.equal(checkName, requiredNames[['fast-gate', 'full-gate', 'release-candidate-gate'].indexOf(id)]);
       }
     }
@@ -97,10 +109,18 @@ test('PR metadata skips gate runners without replacing or canceling real validat
   }
 });
 
-test('risk PRs run full after broad fast without requiring release checks', () => {
+test('risk PRs run full once ci:full is added, and Full Gate requires it', () => {
   const ci = workflow('ci');
-  // These workflow expressions use the same comparisons and boolean operators as JS.
-  const fullCondition = ci.match(/npm run verify:full -- --skip-fast\s+if: ([^\n]+)/)[1];
+  // These workflow expressions use the same comparisons and boolean operators as JS; ?. matches null propagation.
+  const evaluate = (expression, github, needs) => new Function('github', 'needs', `return (${expression.replace(/\.(?=[a-z_])/g, '?.')})`)(github, needs);
+  const fullRequired = ci.match(/FULL_REQUIRED: \$\{\{ (.+) \}\}/)[1];
+  const gateScript = ci.match(/name: Require all selected checks to succeed[\s\S]*?run: \|\n([\s\S]*?)\n\s*echo 'Selected/)[1];
+  const gate = (env) => spawnSync('bash', ['-e', '-c', gateScript], { encoding: 'utf8', env: { ...process.env,
+    SCOPE_RESULT: 'success', FAST_RESULT: 'success', RELEASE_REQUIRED: 'false', ...env } }).status;
+  assert.equal(gate({ FULL_REQUIRED: 'true', FULL_RESULT: 'skipped' }), 1);
+  assert.equal(gate({ FULL_REQUIRED: 'true', FULL_RESULT: 'success' }), 0);
+  assert.equal(gate({ FULL_REQUIRED: 'false', FULL_RESULT: 'skipped' }), 0);
+  const fullCondition = ci.match(/npm run verify:full -- --skip-fast\s+id: full\s+if: ([^\n]+)/)[1];
   const releaseCondition = ci.match(/RELEASE_REQUIRED: \$\{\{ (.+) \}\}/)[1];
   const fastScript = ci.match(/name: Focused fast validation[\s\S]*?run: \|\n([\s\S]*?)      - run:/)[1];
   for (const [path, fullOnPr] of [
@@ -110,10 +130,14 @@ test('risk PRs run full after broad fast without requiring release checks', () =
     ['src/components/Card.vue', false], ['docs/product-specs/cards.md', false]
   ]) {
     const scope = classifyChanges([{ path, status: 'M' }]);
-    const github = { event_name: 'pull_request' };
+    const labeled = { event_name: 'pull_request', event: { action: 'labeled', label: { name: 'ci:full' } } };
     const needs = { scope: { outputs: { scope } } };
-    assert.equal(new Function('github', 'needs', `return (${fullCondition})`)(github, needs), fullOnPr, path);
-    assert.equal(new Function('github', 'needs', `return (${releaseCondition})`)(github, needs), false);
+    assert.equal(evaluate(fullCondition, labeled, needs), fullOnPr, path);
+    assert.equal(evaluate(fullRequired, labeled, needs), fullOnPr, path);
+    for (const action of ['opened', 'synchronize', 'ready_for_review']) {
+      assert.equal(evaluate(fullCondition, { event_name: 'pull_request', event: { action } }, needs), false, `${path}: ${action}`);
+    }
+    assert.equal(evaluate(releaseCondition, labeled, needs), false);
     const fast = spawnSync('bash', ['-e', '-c', `npm() { printf '%s' "$*"; };\n${fastScript}`], {
       encoding: 'utf8', env: { ...process.env, SCOPE: scope, GITHUB_EVENT_NAME: 'pull_request' }
     });
@@ -122,9 +146,27 @@ test('risk PRs run full after broad fast without requiring release checks', () =
   }
   for (const event_name of ['pull_request', 'merge_group']) {
     const needs = { scope: { outputs: { scope: 'full' } } };
-    assert.equal(new Function('github', 'needs', `return (${fullCondition})`)({ event_name }, needs), true);
-    assert.equal(new Function('github', 'needs', `return (${releaseCondition})`)({ event_name }, needs), true);
+    const github = { event_name, event: { label: { name: 'ci:full' } } };
+    assert.equal(evaluate(fullCondition, github, needs), true);
+    assert.equal(evaluate(fullRequired, github, needs), true);
+    assert.equal(evaluate(releaseCondition, github, needs), true);
   }
+  assert.equal(evaluate(fullCondition, { event_name: 'merge_group', event: {} }, { scope: { outputs: { scope: 'full' } } }), true);
+});
+
+test('drafts and ci:full label workflows stay small and least-privileged', () => {
+  const draft = workflow('pr-draft');
+  assert.match(draft, /pull_request_target:\s+types: \[opened, reopened\]/);
+  assert.match(draft, /permissions:\n  pull-requests: write\n\n/);
+  assert.match(draft, /timeout-minutes: 2/);
+  assert.match(draft, /!github.event.pull_request.draft &&\s+github.event.pull_request.user.type != 'Bot' &&\s+!startsWith\(github.event.pull_request.head.ref, 'release\/'\)/);
+  assert.match(draft, /gh pr ready --undo "\$PR_URL"/);
+  const label = workflow('ci-full-label');
+  assert.match(label, /pull_request_target:\s+types: \[synchronize\]/);
+  assert.match(label, /permissions:\n  pull-requests: write\n\n/);
+  assert.match(label, /issues\/\$PR\/labels\/ci%3Afull/);
+  for (const content of [draft, label]) assert.doesNotMatch(content, /uses:|checkout|paths:/);
+  for (const name of ['ci', 'pr-draft', 'ci-full-label']) assert.doesNotMatch(workflow(name), /^\s+paths(-ignore)?:/m);
 });
 
 test('candidate dispatch validates trust before checkout and records success-only exact evidence', () => {

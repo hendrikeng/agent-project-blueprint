@@ -18,7 +18,7 @@ test('root and smoke own separate suites without losing bootstrap or harness tes
   assert.ok(patterns.includes('scripts/ci/*.test.mjs'));
   assert.ok(read('template/scripts/automation/check-harness-alignment.mjs').includes(scripts['harness:test']));
   const source = read('scripts/ci/run-golden-adopted-repo.mjs');
-  assert.ok(source.includes("env: { ...process.env, ...extraEnv, GITHUB_ACTIONS: 'false' }"));
+  assert.ok(source.includes("env: { ...process.env, ...extraEnv, GITHUB_ACTIONS: 'false', GITHUB_HEAD_REF: '', GITHUB_BASE_REF: '', GITHUB_EVENT_NAME: '', GITHUB_EVENT_PATH: '' }"));
   const parentEnv = { GITHUB_ACTIONS: 'true', GITHUB_SHA: 'a'.repeat(40) };
   const branch = 'release/2026.05.12.1';
   assert.throws(() => resolveCloseoutBranch(branch, 'b'.repeat(40), parentEnv));

@@ -1,0 +1,28 @@
+name: pr-draft
+
+# Drafts run no CI. New human PRs start as drafts until the author marks them ready.
+# pull_request_target also runs for PRs with merge conflicts. Never check out or run PR code here.
+on:
+  pull_request_target:
+    types: [opened, reopened]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  draft:
+    name: Convert to draft
+    if: >-
+      !github.event.pull_request.draft &&
+      github.event.pull_request.user.type != 'Bot' &&
+      !startsWith(github.event.pull_request.head.ref, 'release/') &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          gh pr ready --undo "$PR_URL"
+          gh pr comment "$PR_URL" --body 'Converted to draft: drafts run no CI. Mark the PR ready once, when the work is complete.'
