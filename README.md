@@ -51,6 +51,8 @@ Starter CI selects explicit product, docs, harness, or broad fast validation.
 Metadata contracts do not replace code-check evidence. Base edits run code validation again.
 Full validation runs for broad or harness PRs, selected exact-SHA candidates, PRs to main, and main merge groups.
 Standalone full verification still includes broad fast verification. CI runs those commands once.
+Outside CI, project gates, changed-file lint, and the harness test suite use the machine-local `agent-heavy` slot limit when it is on `PATH`.
+The [daily workflow](template/docs/ops/automation/LITE_QUICKSTART.md) describes the opt-out.
 Workflows, project gates, and `scripts/ci/**` need explicit downstream adoption, not automatic synchronization.
 The [CI adoption guide](template/docs/ops/automation/INTEROP_GITHUB.md#ci-budget-defaults) defines required checks and deployment proof.
 The [deployment contract](template/docs/deploy/README.md) separates source, tested, landed, and deployment revisions.

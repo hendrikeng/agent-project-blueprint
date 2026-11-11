@@ -14,4 +14,7 @@ Source of Truth: This document.
 
 Use `docs/PLANS.md` when the work needs a plan.
 Run npm run verify:fast for repository consistency and npm run verify:full at delivery boundaries.
+verify:full includes verify:fast. Do not run verify:fast again before verify:full.
+If `agent-heavy` is on `PATH`, each project gate, the changed-file lint, and the harness test suite run in one `agent-heavy` slot.
+This limits the heavy checks that run at the same time on one machine. CI and `AGENT_HEAVY=0` run the commands directly.
 Do not claim an agent behavioral pass from structural checks or refreshed reports.

@@ -3,7 +3,7 @@
   "description": "Project-specific quality gates. Replace placeholder commands during bootstrap or mark gates not-applicable/deferred with a concrete rationale.",
   "profiles": {
     "fast": "Runs on every implementation PR and during normal agent iteration.",
-    "full": "Runs before merge/release candidates and after verify:fast.",
+    "full": "Runs in verify:full before merge and release candidates. verify:full includes verify:fast.",
     "release": "Runs for release candidates when release support is enabled.",
     "deploy": "Runs against a deployed target when deployment verification is available."
   },

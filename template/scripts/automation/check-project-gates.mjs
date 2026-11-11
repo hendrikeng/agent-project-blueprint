@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { spawnHeavyShell } from './lib/agent-heavy.mjs';
 
 const rootDir = process.cwd();
 const configRel = 'docs/governance/project-gates.json';
@@ -209,11 +209,7 @@ function runGate(gate, { dryRun }) {
     return 0;
   }
   console.log(`[project-gates] run ${gate.id}: ${command}`);
-  const result = spawnSync(command, {
-    shell: true,
-    stdio: 'inherit',
-    env: process.env
-  });
+  const result = spawnHeavyShell(command, { stdio: 'inherit', env: process.env });
   if (result.error) {
     throw result.error;
   }

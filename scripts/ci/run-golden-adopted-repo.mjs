@@ -144,7 +144,7 @@ async function writeProjectGates(repoDir) {
     description: 'Golden adopted repo gates for the Reading List app.',
     profiles: {
       fast: 'Runs on every implementation PR and during normal agent iteration.',
-      full: 'Runs before merge/release candidates and after verify:fast.',
+      full: 'Runs in verify:full before merge and release candidates. verify:full includes verify:fast.',
       release: 'Runs for release candidates when release support is enabled.',
       deploy: 'Runs against a deployed target when deployment verification is available.'
     },

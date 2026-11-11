@@ -155,3 +155,31 @@ test('selected project profiles execute real gates and propagate the first failu
     });
   }
 });
+
+test('local gate runs take an agent-heavy slot unless CI, opt-out, or no agent-heavy on PATH', async (t) => {
+  const binDir = await fs.mkdtemp(path.join(os.tmpdir(), 'agent-heavy-bin-'));
+  t.after(() => fs.rm(binDir, { recursive: true, force: true }));
+  // The fake records its argv, then runs the wrapped command like the real pass-through.
+  await fs.writeFile(path.join(binDir, 'agent-heavy'), '#!/bin/sh\necho "HEAVY:$*"\nshift\nexec "$@"\n', { mode: 0o755 });
+  const basePath = [path.dirname(process.execPath), '/usr/bin', '/bin'].join(path.delimiter);
+  const withHeavy = `${binDir}${path.delimiter}${basePath}`;
+  const gates = [
+    { ...baselineGates[0], command: 'node gate.mjs' },
+    ...baselineGates.slice(1).map((gate) => ({ ...gate, status: 'not-applicable', command: '', rationale: 'Only the lint gate matters in this fixture.' }))
+  ];
+  for (const [name, env, wrapped] of [
+    ['local with agent-heavy', { CI: '', AGENT_HEAVY: '', PATH: withHeavy }, true],
+    ['CI', { CI: 'true', AGENT_HEAVY: '', PATH: withHeavy }, false],
+    ['opted out', { CI: '', AGENT_HEAVY: '0', PATH: withHeavy }, false],
+    ['agent-heavy missing', { CI: '', AGENT_HEAVY: '', PATH: basePath }, false]
+  ]) {
+    await t.test(name, async (t) => {
+      const rootDir = await createFixtureRoot(t, gates);
+      await fs.writeFile(path.join(rootDir, 'gate.mjs'), "console.log('GATE-EXECUTED'); process.exit(5);");
+      const result = spawnSync('node', [scriptPath, '--profile', 'fast', '--run'], { cwd: rootDir, encoding: 'utf8', env: { ...process.env, ...env } });
+      assert.equal(result.status, 5, result.stderr);
+      assert.match(result.stdout, /GATE-EXECUTED/);
+      assert.equal(result.stdout.includes('HEAVY:-- sh -c node gate.mjs'), wrapped);
+    });
+  }
+});

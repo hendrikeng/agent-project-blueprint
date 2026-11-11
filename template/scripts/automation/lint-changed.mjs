@@ -1,6 +1,7 @@
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import process from "node:process";
+import { spawnHeavy } from "./lib/agent-heavy.mjs";
 import { collectLintableChangedFiles } from "./lint-changed-lib.mjs";
 
 function runGit(args, { allowFailure = false } = {}) {
@@ -140,7 +141,7 @@ console.log(
   `lint:changed checking ${changedFiles.length} file(s) against ${baseRef}.`,
 );
 
-const result = spawnSync(
+const result = spawnHeavy(
   "npx",
   ["eslint", "--max-warnings", "0", "--no-warn-ignored", ...changedFiles],
   {

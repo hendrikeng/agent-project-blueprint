@@ -2,6 +2,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { spawnHeavyShell } from './lib/agent-heavy.mjs';
 
 const rootDir = process.cwd();
 const PLAN_ID_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -43,11 +44,11 @@ function runCommand(command, dryRun) {
     console.log(`[verify-fast] dry-run: ${command}`);
     return { status: 0 };
   }
-  const result = spawnSync(command, {
-    shell: true,
-    stdio: 'inherit',
-    env: process.env
-  });
+  const options = { stdio: 'inherit', env: process.env };
+  // Project gates and lint take their own slots; only the harness suite is heavy at this level.
+  const result = command === 'npm run harness:test'
+    ? spawnHeavyShell(command, options)
+    : spawnSync(command, { ...options, shell: true });
   if (result.error) {
     throw result.error;
   }
