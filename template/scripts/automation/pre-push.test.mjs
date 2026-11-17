@@ -74,7 +74,7 @@ test('pre-push logs a failed fast gate and still lets the push continue', async 
   assert.deepEqual(lines.map((fields) => fields.slice(1, 5)), [
     [sha, 'slice/x', 'product', 'fail'],
     [sha, 'slice/x', '', 'skipped'],
-    [sha, 'slice/x', 'product', 'skipped: uncommitted changes'],
-    [sha, 'slice/x', 'product', 'skipped: not checked out']
+    [sha, 'slice/x', '', 'skipped: uncommitted changes'],
+    [sha, 'slice/x', '', 'skipped: not checked out']
   ], 'dev pushes run no gate and write no line');
 });

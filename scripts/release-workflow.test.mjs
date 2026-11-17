@@ -228,11 +228,31 @@ test('candidate dispatch validates trust before checkout and records success-onl
   assert.match(ci, /required: true\s+type: string/);
   assert.match(ci, /test "\$\(git rev-parse HEAD\)" = "\$REVISION"/);
   assert.match(ci, /git merge-base --is-ancestor "\$REVISION" origin\/dev/);
-  assert.match(ci, /run: npm run verify:fast\n\s+if: steps.reuse.outputs.run_id == ''\n\s+- run: npm run verify:full -- --skip-fast\n\s+if: steps.reuse.outputs.run_id == ''/);
-  const reuse = ci.match(/id: reuse\n\s+if: \$\{\{ !inputs.full \}\}[\s\S]*?run: \|\n([\s\S]*?)\n\s+# /)[1];
-  assert.match(reuse, /git archive "\$GITHUB_SHA" scripts\/ci \| tar -x -C "\$RUNNER_TEMP\/dispatch"/);
-  assert.match(reuse, /timeout 120 node "\$RUNNER_TEMP\/dispatch\/scripts\/ci\/full-reuse.mjs" \|\| echo 'run_id=' >>"\$GITHUB_OUTPUT"/);
-  assert.match(ci, /permissions:\n  contents: read\n.*\n  actions: read\n  pull-requests: read\n\n/);
+  assert.match(ci, /run: npm run verify:fast\n\s+if: needs.reuse.outputs.run_id == ''\n\s+- run: npm run verify:full -- --skip-fast\n\s+if: needs.reuse.outputs.run_id == ''/);
+  // Only the lookup job reads Actions and PR data. It runs the dispatch commit, and every doubt runs Full.
+  assert.match(ci, /^permissions:\n  contents: read\n\n/m);
+  const lookup = ci.split('  reuse:\n')[1].split('\n  candidate:\n')[0];
+  assert.match(lookup, /if: \$\{\{ !inputs.full \}\}/);
+  assert.match(lookup, /permissions:\n      contents: read\n      actions: read\n      pull-requests: read\n/);
+  assert.doesNotMatch(lookup, /ref: /);
+  assert.match(lookup, /persist-credentials: false/);
+  assert.match(ci, /needs: reuse\n.*\n    if: \$\{\{ !cancelled\(\) \}\}/);
+  const script = lookup.match(/run: \|\n([\s\S]*)$/)[1];
+  const outputs = (env, node = 'echo run_id=42 >>"$GITHUB_OUTPUT"') => {
+    const d = mkdtempSync(path.join(tmpdir(), 'reuse-step-'));
+    try {
+      writeFileSync(path.join(d, 'out'), '');
+      spawnSync('bash', ['-e', '-c', `timeout() { shift; "$@"; }\nnode() { ${node}; }\n${script}`], { env: { ...process.env,
+        GITHUB_REF: 'refs/heads/dev', DEFAULT_BRANCH: 'dev', REVISION: 'a'.repeat(40), GITHUB_OUTPUT: path.join(d, 'out'), ...env } });
+      return readFileSync(path.join(d, 'out'), 'utf8');
+    } finally {
+      rmSync(d, { recursive: true, force: true });
+    }
+  };
+  assert.equal(outputs({}), 'run_id=42\n');
+  assert.equal(outputs({ GITHUB_REF: 'refs/heads/feature' }), 'run_id=\n');
+  assert.equal(outputs({ REVISION: 'main' }), 'run_id=\n');
+  assert.equal(outputs({}, 'return 1'), 'run_id=\n');
   assert.ok(ci.indexOf('Record successful validation identity') > ci.indexOf('npm run verify:full'));
   assert.match(ci, /run_id: e.GITHUB_RUN_ID, run_attempt: e.GITHUB_RUN_ATTEMPT/);
   assert.match(ci, /name: ci-candidate-\$\{\{ inputs.revision \}\}/);

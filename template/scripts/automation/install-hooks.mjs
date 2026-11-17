@@ -12,9 +12,12 @@ const git = (...args) => {
 
 const top = git('rev-parse', '--show-toplevel');
 const hooksDir = top && path.resolve(top, git('rev-parse', '--git-path', 'hooks'));
+const hooksPath = git('config', 'core.hooksPath');
 let reason = '';
-if (!top || !fs.existsSync(path.join(top, '.githooks'))) reason = 'no .githooks directory at the repository root';
-else if (git('config', 'core.hooksPath')) reason = `core.hooksPath is already ${git('config', 'core.hooksPath')}`;
+// The hook runs ./scripts/automation/pre-push.mjs from the repository root, so the package must be that root.
+if (!top || fs.realpathSync(top) !== fs.realpathSync(process.cwd())) reason = 'the package is not at the repository root';
+else if (!fs.existsSync(path.join(top, '.githooks'))) reason = 'no .githooks directory';
+else if (hooksPath) reason = `core.hooksPath is already ${hooksPath}`;
 else if (fs.existsSync(hooksDir) && fs.readdirSync(hooksDir).some((name) => !name.endsWith('.sample'))) reason = `${hooksDir} has active hooks`;
 if (reason) console.log(`[install-hooks] kept the current Git hooks: ${reason}. Call scripts/automation/pre-push.mjs from your pre-push hook.`);
 else {

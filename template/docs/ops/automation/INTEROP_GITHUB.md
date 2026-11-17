@@ -103,7 +103,8 @@ The candidate does not repeat a green PR Full run of the exact same tree. `scrip
 - The `ci.yml` run of the PR head succeeded, `Fast Gate` and `Full Gate` succeeded, and its `full-tree-<tree>` artifact is current.
 
 Any doubt, error, or timeout runs Full. The job summary lists each miss reason.
-The lookup runs from the dispatch commit, not from the revision under test. Set the `full` dispatch input to force Full.
+The `Full Reuse Lookup` job runs the dispatch commit, not the revision under test. Only this job has `actions: read` and `pull-requests: read`.
+Set the `full` dispatch input to force Full.
 A reused Full does not run date-dependent gates again. Add a dependency audit to the reuse path if the project has one.
 Release PRs do not reuse Full. The lookup needs `actions: read` and `pull-requests: read`, and `ci.yml` keeps only `contents: read`.
 

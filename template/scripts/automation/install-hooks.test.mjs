@@ -27,5 +27,7 @@ test('install-hooks sets the hooks path only when no other hooks are active', as
   git('config', '--unset', 'core.hooksPath');
   await fs.mkdir(path.join(root, 'apps'));
   assert.equal(install(path.join(root, 'apps')).status, 0);
+  assert.equal(git('config', 'core.hooksPath'), '', 'a package below the repository root changes nothing');
+  assert.equal(install().status, 0);
   assert.equal(git('config', 'core.hooksPath'), '.githooks');
 });
