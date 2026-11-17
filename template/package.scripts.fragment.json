@@ -1,6 +1,6 @@
 {
   "scripts": {
-    "prepare": "node -e \"import('./scripts/automation/install-hooks.mjs').catch(() => {})\"",
+    "prepare": "node -e \"import('./scripts/automation/install-hooks.mjs').catch((error) => error.code === 'ERR_MODULE_NOT_FOUND' || console.warn('[install-hooks] failed:', error.message))\"",
     "bootstrap:verify": "bash ./scripts/bootstrap-verify.sh",
     "bootstrap:cleanup": "node ./scripts/cleanup-bootstrap-artifacts.mjs",
     "context:compile": "node ./scripts/automation/compile-runtime-context.mjs",
