@@ -82,6 +82,14 @@ export async function createTemplateRepo(t) {
   return tempRoot;
 }
 
+// Scripts-only fixture for tests that never read docs or Git: copying the full repository is slow downstream.
+export async function createScriptsRepo(t) {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'harness-scripts-'));
+  t.after(() => fs.rm(tempRoot, { recursive: true, force: true, maxRetries: 3 }));
+  await fs.cp(path.join(templateRoot, 'scripts'), path.join(tempRoot, 'scripts'), { recursive: true });
+  return tempRoot;
+}
+
 export function runNode(scriptPath, args = [], cwd = repoRoot, env = {}) {
   return spawnSync('node', [scriptPath, ...args], {
     cwd,

@@ -127,12 +127,17 @@ test('bootstrap cleanup refuses to remove script fragment before it is merged', 
   const packageJsonPath = path.join(rootDir, 'package.json');
   const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf8'));
   delete packageJson.scripts['verify:fast'];
+  // A chained `prepare` counts as merged; a missing hook installer does not.
+  packageJson.scripts.prepare = 'husky';
   await fs.writeFile(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`, 'utf8');
 
   const result = runNode(path.join(rootDir, 'scripts', 'cleanup-bootstrap-artifacts.mjs'), [], rootDir);
 
   assert.equal(result.status, 1);
-  assert.match(String(result.stderr), /has not been fully merged/);
+  assert.match(String(result.stderr), /has not been fully merged into package.json: prepare, verify:fast$/m);
+  packageJson.scripts.prepare = `husky && ${JSON.parse(await fs.readFile(path.join(rootDir, 'package.scripts.fragment.json'), 'utf8')).scripts.prepare}`;
+  await fs.writeFile(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`, 'utf8');
+  assert.match(String(runNode(path.join(rootDir, 'scripts', 'cleanup-bootstrap-artifacts.mjs'), [], rootDir).stderr), /fully merged into package.json: verify:fast$/m);
   await fs.access(path.join(rootDir, 'PLACEHOLDERS.md'));
   await fs.access(path.join(rootDir, 'package.scripts.fragment.json'));
 });

@@ -131,6 +131,11 @@ The script fragment is bootstrap-only. An update does not merge its new commands
    ```
 
    Compare all blueprint-owned commands with the updated `template/package.scripts.fragment.json` and merge any other missing or changed commands.
+   `harness:test` now has a per-test timeout and a slowest-tests report. `harness:verify` requires the new command.
+   The new `prepare` script installs the observe-mode `.githooks/pre-push` hook. Harness updates do not copy `.githooks/**`, so copy it first.
+   If `prepare` already exists, append `&&` and the fragment `prepare` command to it. Bootstrap cleanup accepts that chain.
+   If the installer file is missing, for example in a Docker dependency layer, the command does nothing. Other installer errors print a warning and do not stop the install.
+   If the project already uses other hooks, the installer keeps them. Then call `scripts/automation/pre-push.mjs` from the existing pre-push hook.
 6. Manually merge the changed project contracts from the updated templates. Keep local facts, instructions, gates, and design conventions.
    - `AGENTS.md` and `docs/README.md`: startup reading, task-map routing, and the Engineering Invariants reference.
    - `README.md` and `docs/product-specs/CURRENT-STATE.md`: current capabilities, source anchors, unresolved gaps, and snapshot maintenance.

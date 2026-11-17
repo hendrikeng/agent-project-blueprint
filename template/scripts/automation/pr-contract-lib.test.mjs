@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { validatePrContract } from './pr-contract-lib.mjs';
+import { localVerificationWarnings, validatePrContract } from './pr-contract-lib.mjs';
 
 test('only release branches can target main', () => {
   for (const headRef of ['dev', 'slice/example', 'fix/example']) {
@@ -43,4 +43,16 @@ test('release PR contract validates the title without mandatory hosted gates', (
     title: 'Ship it',
     body: releaseBody
   }).join('\n'), /release PR title must be 'Release 2026\.07\.13\.1'/);
+});
+
+test('a missing or empty local verification warns without failing the contract', () => {
+  for (const body of ['', '- Local verification:', '- Local verification:   \n']) {
+    assert.match(localVerificationWarnings(body).join('\n'), /Local verification is missing or empty/);
+  }
+  for (const value of ['none', '`npm run verify:fast` at abc1234: pass']) {
+    assert.deepEqual(localVerificationWarnings(`## Validation Summary\r\n\r\n- Local verification: ${value}\r\n`), []);
+  }
+  const input = { headRef: 'release/2026.07.13.1', baseRef: 'main', title: 'Release 2026.07.13.1', body: releaseBody };
+  assert.deepEqual(validatePrContract(input), []);
+  assert.equal(localVerificationWarnings(input.body).length, 1);
 });

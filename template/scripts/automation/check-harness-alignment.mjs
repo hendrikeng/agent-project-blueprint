@@ -20,7 +20,7 @@ const requiredScripts = new Map([
   ['project:gates:fast', 'node ./scripts/automation/check-project-gates.mjs --profile fast --run'],
   ['project:gates:full', 'node ./scripts/automation/check-project-gates.mjs --profile full --run'],
   ['project:gates:release', 'node ./scripts/automation/check-project-gates.mjs --profile release --run'],
-  ['harness:test', 'node --test scripts/agent-hardening/*.test.mjs scripts/architecture/*.test.mjs scripts/automation/*.test.mjs scripts/automation/lib/*.test.mjs scripts/automation/lib/contracts/*.test.mjs scripts/ci/*.test.mjs scripts/docs/*.test.mjs scripts/docs/lib/*.test.mjs'],
+  ['harness:test', 'node --test --test-timeout=45000 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./scripts/automation/lib/slowest-tests-reporter.mjs --test-reporter-destination=stdout scripts/agent-hardening/*.test.mjs scripts/architecture/*.test.mjs scripts/automation/*.test.mjs scripts/automation/lib/*.test.mjs scripts/automation/lib/contracts/*.test.mjs scripts/ci/*.test.mjs scripts/docs/*.test.mjs scripts/docs/lib/*.test.mjs'],
   ['harness:verify', 'node ./scripts/automation/check-harness-alignment.mjs'],
   ['plans:repair', 'node ./scripts/docs/repair-plan-references.mjs'],
   ['plans:verify', 'node ./scripts/automation/check-plan-metadata.mjs'],

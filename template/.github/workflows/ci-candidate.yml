@@ -8,6 +8,11 @@ on:
         description: Exact dev ancestor to validate (lowercase 40-character commit SHA)
         required: true
         type: string
+      full:
+        description: Run Full even if a green PR Full run of the exact tree exists
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -21,8 +26,46 @@ env:
   CI_INSTALL_COMMAND: "{{CI_INSTALL_COMMAND}}"
 
 jobs:
+  # Only this job reads Actions and PR data. It runs the lookup of the dispatch commit, never revision code.
+  reuse:
+    name: Full Reuse Lookup
+    if: ${{ !inputs.full }}
+    # A failed lookup runs Full and must not fail the candidate run.
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    outputs:
+      run_id: ${{ steps.reuse.outputs.run_id }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
+      - name: Find a green PR Full run of this exact tree
+        id: reuse
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REVISION: ${{ inputs.revision }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          # Any doubt runs Full: an untrusted ref, an invalid revision, an error, or a timeout gives an empty run_id.
+          if [[ "$GITHUB_REF" != "refs/heads/$DEFAULT_BRANCH" || ! "$REVISION" =~ ^[a-f0-9]{40}$ ]] || ! timeout 120 node scripts/ci/full-reuse.mjs; then
+            echo 'run_id=' >>"$GITHUB_OUTPUT"
+          fi
+
   candidate:
     name: Candidate Full Validation
+    needs: reuse
+    # A skipped or failed lookup runs Full.
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
@@ -52,11 +95,15 @@ jobs:
       - run: corepack enable
       - run: ${{ env.CI_INSTALL_COMMAND }}
       - run: npm run eval:refresh && git diff --exit-code -- docs/generated/evals-report.json
+      # Add date-dependent gates, such as a dependency audit, here: a reused Full does not run them again.
       - run: npm run verify:fast
+        if: needs.reuse.outputs.run_id == ''
       - run: npm run verify:full -- --skip-fast
+        if: needs.reuse.outputs.run_id == ''
       - name: Record successful validation identity
         env:
           REVISION: ${{ inputs.revision }}
+          REUSED_RUN_ID: ${{ needs.reuse.outputs.run_id }}
         run: |
           mkdir -p "$RUNNER_TEMP/ci-candidate-evidence"
           node --input-type=module -e '
@@ -64,7 +111,8 @@ jobs:
             const e = process.env;
             fs.writeFileSync(`${e.RUNNER_TEMP}/ci-candidate-evidence/evidence.json`, JSON.stringify({
               revision: e.REVISION, repository: e.GITHUB_REPOSITORY,
-              run_id: e.GITHUB_RUN_ID, run_attempt: e.GITHUB_RUN_ATTEMPT
+              run_id: e.GITHUB_RUN_ID, run_attempt: e.GITHUB_RUN_ATTEMPT,
+              reused_full_run_id: e.REUSED_RUN_ID || null
             }) + "\n");
           '
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7

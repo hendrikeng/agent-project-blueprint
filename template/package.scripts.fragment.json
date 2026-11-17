@@ -1,5 +1,6 @@
 {
   "scripts": {
+    "prepare": "node -e \"import('./scripts/automation/install-hooks.mjs').catch((error) => error.code === 'ERR_MODULE_NOT_FOUND' || console.warn('[install-hooks] failed:', error.message))\"",
     "bootstrap:verify": "bash ./scripts/bootstrap-verify.sh",
     "bootstrap:cleanup": "node ./scripts/cleanup-bootstrap-artifacts.mjs",
     "context:compile": "node ./scripts/automation/compile-runtime-context.mjs",
@@ -17,7 +18,7 @@
     "project:gates:full": "node ./scripts/automation/check-project-gates.mjs --profile full --run",
     "project:gates:release": "node ./scripts/automation/check-project-gates.mjs --profile release --run",
     "lint:changed": "node ./scripts/automation/lint-changed.mjs",
-    "harness:test": "node --test scripts/agent-hardening/*.test.mjs scripts/architecture/*.test.mjs scripts/automation/*.test.mjs scripts/automation/lib/*.test.mjs scripts/automation/lib/contracts/*.test.mjs scripts/ci/*.test.mjs scripts/docs/*.test.mjs scripts/docs/lib/*.test.mjs",
+    "harness:test": "node --test --test-timeout=45000 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./scripts/automation/lib/slowest-tests-reporter.mjs --test-reporter-destination=stdout scripts/agent-hardening/*.test.mjs scripts/architecture/*.test.mjs scripts/automation/*.test.mjs scripts/automation/lib/*.test.mjs scripts/automation/lib/contracts/*.test.mjs scripts/ci/*.test.mjs scripts/docs/*.test.mjs scripts/docs/lib/*.test.mjs",
     "harness:verify": "node ./scripts/automation/check-harness-alignment.mjs",
     "plans:repair": "node ./scripts/docs/repair-plan-references.mjs",
     "plans:verify": "node ./scripts/automation/check-plan-metadata.mjs",

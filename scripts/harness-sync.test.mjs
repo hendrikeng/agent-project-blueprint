@@ -454,11 +454,13 @@ test('configured baseline migration requires explicit package and project-contra
   await assert.rejects(fs.access(path.join(target, 'package.scripts.fragment.json')), { code: 'ENOENT' });
   const missingScripts = targetRun('automation/check-harness-alignment.mjs');
   assert.equal(missingScripts.status, 1);
-  for (const name of ['context:check', 'eval:integrity', 'project:gates:release']) {
+  for (const name of ['context:check', 'eval:integrity', 'project:gates:release', 'harness:test']) {
     assert.match(missingScripts.stderr, new RegExp(`SCRIPT_MISMATCH.*${name}`));
   }
-  // Manual package merge: retain all local commands and integrate the three new contracts.
+  // Manual package merge: retain all local commands and integrate the new contracts.
+  const incomingScripts = JSON.parse(await fs.readFile(path.join(repoRoot, 'template/package.scripts.fragment.json'), 'utf8')).scripts;
   Object.assign(pkg.scripts, {
+    'harness:test': incomingScripts['harness:test'],
     'context:check': 'node ./scripts/automation/compile-runtime-context.mjs --check',
     'eval:integrity': 'node ./scripts/agent-hardening/check-evals.mjs --integrity-only',
     'project:gates:release': 'node ./scripts/automation/check-project-gates.mjs --profile release --run'

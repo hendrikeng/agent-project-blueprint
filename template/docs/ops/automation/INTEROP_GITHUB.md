@@ -53,6 +53,8 @@ Product changes run the declared fast project commands. Docs changes run documen
 Harness PRs run broad fast verification before full verification, including product tests, harness regressions, and agent document checks.
 Every code scope retains eval integrity, context freshness, governance, path policy, plan closeout, and harness alignment checks.
 Unknown, deleted, mixed, shared-configuration, and sensitive changes select broad fast validation.
+Changes to `.github/workflows/**`, `.github/actions/**`, or `scripts/ci/**` select full. CI runs the classifier from the PR base commit, so a PR cannot narrow its own scope.
+If the base commit has no usable classifier, CI selects full.
 
 Full validation runs for broad or harness PRs, selected candidates, PRs to `main`, and `main` merge groups.
 On a PR, full validation runs only in the run that the `ci:full` label starts. Full Gate fails until that run passes.
@@ -72,12 +74,41 @@ Starter workflows pin official actions to reviewed commit SHAs with version comm
 The Node24 action runtime requires Actions Runner 2.327.1 or later. Hosted runners supply it; verify any self-hosted runner before adoption.
 Implicit package-manager caching is disabled. Candidate fetches and release pushes retain scoped Git authentication; read-only CI does not persist credentials.
 
+### Test Lane Guards
+
+Each test lane has a per-test timeout and prints its slowest tests. A test that waits for a missing service then fails fast, and slow tests show in every log.
+`harness:test` uses `--test-timeout=45000` and `scripts/automation/lib/slowest-tests-reporter.mjs`.
+Give the project test lanes the same guards:
+
+- Vitest: `testTimeout: 45000` and a duration report, for example the JSON reporter.
+- pytest: `pytest-timeout` with `--timeout=45 --timeout-method=signal` and `--durations=25`.
+  Give each correct slow test an explicit `timeout` marker.
+  With `pytest-xdist`, keep the signal method. The thread method stops the whole worker process.
+
+Harness tests that read only scripts use `createScriptsRepo()`. A full repository copy is slow in a large project.
+
 ### Selected Candidate Proof
 
 `.github/workflows/ci-candidate.yml` accepts a required lowercase 40-character `revision` SHA through `workflow_dispatch`.
 The dispatch must use the repository default branch. The selected revision must be an ancestor of `origin/dev`.
 The run name is `CI candidate <revision>`. Only successful full validation produces the artifact `ci-candidate-<revision>`.
 Its `evidence.json` contains string fields `revision`, `repository`, `run_id`, and `run_attempt`.
+If the candidate reused a PR Full run, `reused_full_run_id` names that run. Otherwise, the field is `null`.
+
+The candidate does not repeat a green PR Full run of the exact same tree. `scripts/ci/full-reuse.mjs` accepts a run only if all of these are true:
+
+- A same-repository PR merged into `dev` has the revision as its merge commit.
+- The PR file list is complete and nonempty, and the PR scope ran the Full tier.
+- The PR does not change gate files: workflows, local actions, `scripts/ci/**`, `package.json`, project gates, and the verify scripts.
+- The dispatch commit has the same workflows, local actions, and `scripts/ci/**` as the revision.
+- The `ci.yml` run of the PR head succeeded, `Fast Gate` and `Full Gate` succeeded, and its `full-tree-<tree>` artifact is current.
+
+Any doubt, error, or timeout runs Full. The job summary lists each miss reason.
+The `Full Reuse Lookup` job runs the dispatch commit, not the revision under test. Only this job has `actions: read` and `pull-requests: read`.
+Set the `full` dispatch input to force Full.
+Reuse needs `dev` as the default branch. GitHub lists the merged PR of a commit only on the default branch, and the lookup compares workflow files with the dispatch commit.
+A reused Full does not run date-dependent gates again. Add a dependency audit to the reuse path if the project has one.
+Release PRs do not reuse Full. The lookup needs `actions: read` and `pull-requests: read`, and `ci.yml` keeps only `contents: read`.
 
 Before deployment, verify the workflow path, dispatch event, trusted default-branch ref, and successful conclusion.
 Then compare the artifact with the GitHub run identity.
