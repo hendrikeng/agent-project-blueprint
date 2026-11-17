@@ -9,7 +9,7 @@ test('root and smoke own separate suites without losing bootstrap or harness tes
   assert.ok(read('scripts/ci/run-root-tests.mjs').includes("globSync(['scripts/**/*.test.mjs', 'template/scripts/*.test.mjs'])"));
   assert.match(read('scripts/ci/run-template-smoke.mjs'), /'npm run verify:fast'/);
   const { scripts } = JSON.parse(read('template/package.scripts.fragment.json'));
-  const patterns = scripts['harness:test'].replace('node --test ', '').split(' ');
+  const patterns = scripts['harness:test'].split(' ').slice(2).filter((token) => !token.startsWith('--'));
   const cwd = new URL('../template/', import.meta.url);
   assert.deepEqual(
     [...globSync(patterns, { cwd }), ...globSync('scripts/*.test.mjs', { cwd })].sort(),

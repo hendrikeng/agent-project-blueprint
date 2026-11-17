@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 
-import { createTemplateRepo, runNode } from './test-helpers.mjs';
+import { createScriptsRepo, runNode } from './test-helpers.mjs';
 
 test('verify-full dry-run expands to fast plus merge-level checks', async (t) => {
-  const rootDir = await createTemplateRepo(t);
+  const rootDir = await createScriptsRepo(t);
   const result = runNode(path.join(rootDir, 'scripts', 'automation', 'verify-full.mjs'), ['--dry-run'], rootDir);
 
   assert.equal(result.status, 0, String(result.stderr));
@@ -32,7 +32,7 @@ test('verify-full dry-run expands to fast plus merge-level checks', async (t) =>
 });
 
 test('verify-full runs every remaining check and propagates child failures', async (t) => {
-  const rootDir = await createTemplateRepo(t);
+  const rootDir = await createScriptsRepo(t);
   const checks = [
     'scripts/automation/verify-fast.mjs',
     'scripts/check-article-conformance.mjs',

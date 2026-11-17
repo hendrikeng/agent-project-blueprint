@@ -2,10 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 
-import { createTemplateRepo, runNode } from './test-helpers.mjs';
+import { createScriptsRepo, runNode } from './test-helpers.mjs';
 
 test('verify-fast dry-run lists the flat queue safety checks', async (t) => {
-  const rootDir = await createTemplateRepo(t);
+  const rootDir = await createScriptsRepo(t);
   const result = runNode(path.join(rootDir, 'scripts', 'automation', 'verify-fast.mjs'), ['--dry-run'], rootDir, { CI: '1' });
 
   assert.equal(result.status, 0, String(result.stderr));
@@ -18,7 +18,7 @@ test('verify-fast dry-run lists the flat queue safety checks', async (t) => {
 });
 
 test('verify-fast scopes product and docs while distinguishing eval integrity from activation', async (t) => {
-  const rootDir = await createTemplateRepo(t);
+  const rootDir = await createScriptsRepo(t);
   const script = path.join(rootDir, 'scripts/automation/verify-fast.mjs');
   for (const scope of ['product', 'docs', 'harness', 'broad']) {
     const result = runNode(script, ['--dry-run', '--scope', scope], rootDir);
@@ -35,7 +35,7 @@ test('verify-fast scopes product and docs while distinguishing eval integrity fr
 });
 
 test('verify-fast adds architecture verification when architecture files changed', async (t) => {
-  const rootDir = await createTemplateRepo(t);
+  const rootDir = await createScriptsRepo(t);
   const result = runNode(
     path.join(rootDir, 'scripts', 'automation', 'verify-fast.mjs'),
     ['--dry-run'],
@@ -48,7 +48,7 @@ test('verify-fast adds architecture verification when architecture files changed
 });
 
 test('verify-fast can scope plan metadata verification to one plan', async (t) => {
-  const rootDir = await createTemplateRepo(t);
+  const rootDir = await createScriptsRepo(t);
   const result = runNode(
     path.join(rootDir, 'scripts', 'automation', 'verify-fast.mjs'),
     ['--dry-run'],

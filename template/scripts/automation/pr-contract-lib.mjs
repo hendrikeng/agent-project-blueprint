@@ -73,6 +73,12 @@ function branchClass(headRef) {
   return "other";
 }
 
+// Observe mode: a missing or empty `Local verification:` value warns and does not fail pr:verify.
+export function localVerificationWarnings(body) {
+  const value = normalizeText(body).match(/^- Local verification:[ \t]*(.*)$/m)?.[1].trim();
+  return value ? [] : ['Local verification is missing or empty. Write the command, SHA, and result, or "none".'];
+}
+
 export function validatePrContract({ headRef, baseRef, title, body }) {
   const head = String(headRef ?? "").trim();
   const base = String(baseRef ?? "").trim();

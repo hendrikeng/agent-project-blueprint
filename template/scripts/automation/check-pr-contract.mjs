@@ -1,6 +1,7 @@
 import process from "node:process";
 import {
   implementationMergeCommits,
+  localVerificationWarnings,
   readPrContractFromEnv,
   validateImplementationBranchHistory,
   validatePrContract,
@@ -12,6 +13,10 @@ try {
   if (!contract.headRef && !contract.baseRef) {
     console.log("pr:verify skipped outside pull_request context.");
     process.exit(0);
+  }
+
+  for (const warning of localVerificationWarnings(contract.body)) {
+    console.warn(`${process.env.GITHUB_ACTIONS === "true" ? "::warning::" : ""}pr:verify: ${warning}`);
   }
 
   const findings = [

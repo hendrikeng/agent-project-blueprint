@@ -18,3 +18,10 @@ verify:full includes verify:fast. Do not run verify:fast again before verify:ful
 If `agent-heavy` is on `PATH`, each project gate, the changed-file lint, and the harness test suite run in one `agent-heavy` slot.
 This limits the heavy checks that run at the same time on one machine. CI and `AGENT_HEAVY=0` run the commands directly.
 Do not claim an agent behavioral pass from structural checks or refreshed reports.
+
+The package `prepare` script sets `core.hooksPath` to `.githooks`. The `pre-push` hook is in observe mode.
+On a feature branch, the hook runs `npm run verify:fast` with the scope of the local classifier. It never stops the push.
+The hook writes the time, SHA, branch, scope, result, and duration to `verify-fast-pre-push.log` in the Git directory.
+To skip the gate, set `VERIFY_PRE_PUSH=skip`. The hook writes the skip to the log.
+To enforce the gate later, make the hook exit with the gate status. Keep `VERIFY_PRE_PUSH=skip` as the logged escape.
+Do not install AI reviews as Git hooks.

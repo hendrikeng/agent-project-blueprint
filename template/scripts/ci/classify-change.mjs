@@ -10,6 +10,8 @@ export function metadataOnly(eventName, event) {
 }
 
 export function classifyChanges(entries) {
+  // CI runs the classifier of the base commit, so a change to it or to a workflow runs everything.
+  if (entries.some(({ path }) => /^(?:\.github\/workflows|scripts\/ci)\//.test(String(path ?? '')))) return 'full';
   const scopes = new Set();
   for (const { status, path } of entries) {
     const words = String(path ?? "").replaceAll("\\", "/").replace(/([a-z0-9])([A-Z])/g, "$1-$2");

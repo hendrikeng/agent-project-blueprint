@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { classifyChanges } from '../template/scripts/ci/classify-change.mjs';
 
@@ -50,6 +52,9 @@ test('default CI retains required aggregates, contract, and release coverage', (
   assert.match(ci, /needs: \[scope, fast-gate, release-candidate-gate\]\s+if: >-\s+always\(\)/);
   for (const result of ['SCOPE_RESULT', 'FAST_RESULT', 'RELEASE_RESULT']) assert.ok(ci.includes(`test "$${result}" = success`));
   assert.match(ci, /npm run verify:full -- --skip-fast\s+id: full\s+if: \(needs.scope.outputs.scope == 'full'/);
+  // Only a passed PR Full records its tree for exact-tree candidate reuse.
+  assert.match(ci, /id: tree\n\s+if: steps.full.outcome == 'success' && github.event_name == 'pull_request'/);
+  assert.match(ci, /if: steps.tree.outcome == 'success'\n\s+with:\n\s+name: full-tree-\$\{\{ steps.tree.outputs.tree \}\}/);
   assert.match(ci, /RELEASE_HEAD_REF: \$\{\{ github.event.pull_request.head.sha \}\}/);
   assert.equal((ci.match(/run: npm run project:gates:release/g) ?? []).length, 2);
   assert.match(ci, /RELEASE_BASE_REF: origin\/main\s+RELEASE_ALLOW_ANY_BRANCH: "true"/);
@@ -127,6 +132,7 @@ test('risk PRs run full once ci:full is added, and Full Gate requires it', () =>
     ['src/auth/session.ts', true], ['src/schema.ts', true], ['package-lock.json', true],
     ['src/identity.ts', true], ['apps/api/src/tenancy.ts', true], ['apps/api/src/persistence.ts', true],
     ['src/shared/types.ts', true], ['unknown.file', true], ['scripts/automation/verify-fast.mjs', true],
+    ['.github/workflows/ci.yml', true], ['scripts/ci/classify-change.mjs', true],
     ['src/components/Card.vue', false], ['docs/product-specs/cards.md', false]
   ]) {
     const scope = classifyChanges([{ path, status: 'M' }]);
@@ -144,14 +150,40 @@ test('risk PRs run full once ci:full is added, and Full Gate requires it', () =>
     assert.equal(fast.status, 0, fast.stderr);
     assert.equal(fast.stdout, `run verify:fast -- --scope ${fullOnPr ? 'broad' : scope}`);
   }
-  for (const event_name of ['pull_request', 'merge_group']) {
+  for (const [event_name, base_ref, release] of [['pull_request', 'main', true], ['pull_request', 'dev', false], ['merge_group', undefined, true]]) {
     const needs = { scope: { outputs: { scope: 'full' } } };
-    const github = { event_name, event: { label: { name: 'ci:full' } } };
+    const github = { event_name, base_ref, event: { label: { name: 'ci:full' } } };
     assert.equal(evaluate(fullCondition, github, needs), true);
     assert.equal(evaluate(fullRequired, github, needs), true);
-    assert.equal(evaluate(releaseCondition, github, needs), true);
+    assert.equal(evaluate(releaseCondition, github, needs), release, `${event_name} ${base_ref}`);
   }
   assert.equal(evaluate(fullCondition, { event_name: 'merge_group', event: {} }, { scope: { outputs: { scope: 'full' } } }), true);
+});
+
+test('the scope step runs the base classifier and selects full without one', () => {
+  const ci = workflow('ci');
+  const step = ci.match(/- id: scope\n[\s\S]*?run: \|\n([\s\S]*?)\n\n/)[1];
+  assert.match(ci, /BASE_SHA: \$\{\{ github.event.pull_request.base.sha \|\| github.event.merge_group.base_sha \}\}/);
+  const d = mkdtempSync(path.join(tmpdir(), 'scope-step-'));
+  try {
+    const run = (git, node) => {
+      const output = path.join(d, `output-${Math.random()}`);
+      writeFileSync(output, '');
+      const result = spawnSync('bash', ['-e', '-c', `git() { ${git}; }\nnode() { ${node}; }\n${step}`], {
+        encoding: 'utf8', env: { ...process.env, BASE_SHA: 'a'.repeat(40), RUNNER_TEMP: d, GITHUB_OUTPUT: output }
+      });
+      return { status: result.status, output: readFileSync(output, 'utf8'), args: result.stdout };
+    };
+    const base = run('echo "$*"', 'echo "node $*"; echo scope=product >>"$GITHUB_OUTPUT"');
+    assert.equal(base.status, 0);
+    assert.equal(base.output, 'scope=product\n');
+    assert.equal(readFileSync(path.join(d, 'classify-change.mjs'), 'utf8'), `show ${'a'.repeat(40)}:scripts/ci/classify-change.mjs\n`);
+    assert.match(base.args, new RegExp(`node ${d}/classify-change.mjs`));
+    assert.equal(run('return 128', 'return 0').output, 'scope=full\n');
+    assert.equal(run('return 0', 'return 1').output, 'scope=full\n');
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
 });
 
 test('drafts and ci:full label workflows stay small and least-privileged', () => {
@@ -181,7 +213,11 @@ test('candidate dispatch validates trust before checkout and records success-onl
   assert.match(ci, /required: true\s+type: string/);
   assert.match(ci, /test "\$\(git rev-parse HEAD\)" = "\$REVISION"/);
   assert.match(ci, /git merge-base --is-ancestor "\$REVISION" origin\/dev/);
-  assert.match(ci, /npm run verify:fast\s+- run: npm run verify:full -- --skip-fast/);
+  assert.match(ci, /run: npm run verify:fast\n\s+if: steps.reuse.outputs.run_id == ''\n\s+- run: npm run verify:full -- --skip-fast\n\s+if: steps.reuse.outputs.run_id == ''/);
+  const reuse = ci.match(/id: reuse\n\s+if: \$\{\{ !inputs.full \}\}[\s\S]*?run: \|\n([\s\S]*?)\n\s+# /)[1];
+  assert.match(reuse, /git show "\$GITHUB_SHA:scripts\/ci\/\$file"/);
+  assert.match(reuse, /timeout 120 node "\$RUNNER_TEMP\/full-reuse\/full-reuse.mjs" \|\| echo 'run_id=' >>"\$GITHUB_OUTPUT"/);
+  assert.match(ci, /permissions:\n  contents: read\n.*\n  actions: read\n  pull-requests: read\n\n/);
   assert.ok(ci.indexOf('Record successful validation identity') > ci.indexOf('npm run verify:full'));
   assert.match(ci, /run_id: e.GITHUB_RUN_ID, run_attempt: e.GITHUB_RUN_ATTEMPT/);
   assert.match(ci, /name: ci-candidate-\$\{\{ inputs.revision \}\}/);

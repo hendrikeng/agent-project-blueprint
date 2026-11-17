@@ -42,6 +42,10 @@
 
 ## Validation Summary
 
+Write the local gate command, the commit SHA, and the result. If you ran no local gate, write `none`.
+
+- Local verification:
+
 ```text
 Paste the commands you ran and the pass/fail outcome.
 ```

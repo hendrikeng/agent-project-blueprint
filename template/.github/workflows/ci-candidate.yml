@@ -8,9 +8,17 @@ on:
         description: Exact dev ancestor to validate (lowercase 40-character commit SHA)
         required: true
         type: string
+      full:
+        description: Run Full even if a green PR Full run of the exact tree exists
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
+  # scripts/ci/full-reuse.mjs reads the merged PR, its runs, jobs, and artifacts.
+  actions: read
+  pull-requests: read
 
 concurrency:
   group: ci-candidate-${{ inputs.revision }}
@@ -52,11 +60,26 @@ jobs:
       - run: corepack enable
       - run: ${{ env.CI_INSTALL_COMMAND }}
       - run: npm run eval:refresh && git diff --exit-code -- docs/generated/evals-report.json
+      # Run the reuse lookup of the dispatch commit, not of the revision under test. Any doubt runs Full.
+      - name: Find a green PR Full run of this exact tree
+        id: reuse
+        if: ${{ !inputs.full }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REVISION: ${{ inputs.revision }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/full-reuse"
+          for file in full-reuse.mjs classify-change.mjs; do git show "$GITHUB_SHA:scripts/ci/$file" >"$RUNNER_TEMP/full-reuse/$file" || break; done
+          timeout 120 node "$RUNNER_TEMP/full-reuse/full-reuse.mjs" || echo 'run_id=' >>"$GITHUB_OUTPUT"
+      # Add date-dependent gates, such as a dependency audit, here: a reused Full does not run them again.
       - run: npm run verify:fast
+        if: steps.reuse.outputs.run_id == ''
       - run: npm run verify:full -- --skip-fast
+        if: steps.reuse.outputs.run_id == ''
       - name: Record successful validation identity
         env:
           REVISION: ${{ inputs.revision }}
+          REUSED_RUN_ID: ${{ steps.reuse.outputs.run_id }}
         run: |
           mkdir -p "$RUNNER_TEMP/ci-candidate-evidence"
           node --input-type=module -e '
@@ -64,7 +87,8 @@ jobs:
             const e = process.env;
             fs.writeFileSync(`${e.RUNNER_TEMP}/ci-candidate-evidence/evidence.json`, JSON.stringify({
               revision: e.REVISION, repository: e.GITHUB_REPOSITORY,
-              run_id: e.GITHUB_RUN_ID, run_attempt: e.GITHUB_RUN_ATTEMPT
+              run_id: e.GITHUB_RUN_ID, run_attempt: e.GITHUB_RUN_ATTEMPT,
+              reused_full_run_id: e.REUSED_RUN_ID || null
             }) + "\n");
           '
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
