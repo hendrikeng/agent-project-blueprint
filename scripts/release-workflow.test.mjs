@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -53,7 +53,7 @@ test('default CI retains required aggregates, contract, and release coverage', (
   for (const result of ['SCOPE_RESULT', 'FAST_RESULT', 'RELEASE_RESULT']) assert.ok(ci.includes(`test "$${result}" = success`));
   assert.match(ci, /npm run verify:full -- --skip-fast\s+id: full\s+if: \(needs.scope.outputs.scope == 'full'/);
   // Only a passed PR Full records its tree for exact-tree candidate reuse.
-  assert.match(ci, /id: tree\n\s+if: steps.full.outcome == 'success' && github.event_name == 'pull_request'/);
+  assert.match(ci, /id: tree\n\s+if: steps.full.outcome == 'success' && github.event_name == 'pull_request' && github.base_ref == 'dev'\n/);
   assert.match(ci, /if: steps.tree.outcome == 'success'\n\s+with:\n\s+name: full-tree-\$\{\{ steps.tree.outputs.tree \}\}/);
   assert.match(ci, /RELEASE_HEAD_REF: \$\{\{ github.event.pull_request.head.sha \}\}/);
   assert.equal((ci.match(/run: npm run project:gates:release/g) ?? []).length, 2);
@@ -166,21 +166,35 @@ test('the scope step runs the base classifier and selects full without one', () 
   assert.match(ci, /BASE_SHA: \$\{\{ github.event.pull_request.base.sha \|\| github.event.merge_group.base_sha \}\}/);
   const d = mkdtempSync(path.join(tmpdir(), 'scope-step-'));
   try {
-    const run = (git, node) => {
-      const output = path.join(d, `output-${Math.random()}`);
+    const repo = path.join(d, 'repo');
+    const git = (...args) => spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', ...args], { cwd: repo, encoding: 'utf8' }).stdout.trim();
+    mkdirSync(path.join(repo, 'scripts/ci'), { recursive: true });
+    git('init', '-q');
+    git('commit', '-q', '--allow-empty', '-m', 'no classifier');
+    const empty = git('rev-parse', 'HEAD');
+    // A project-owned classifier can import its sibling files.
+    writeFileSync(path.join(repo, 'scripts/ci/paths.mjs'), "export const scope = 'product';\n");
+    writeFileSync(path.join(repo, 'scripts/ci/classify-change.mjs'), "import fs from 'node:fs';\nimport { scope } from './paths.mjs';\nfs.appendFileSync(process.env.GITHUB_OUTPUT, `scope=${scope}\\n`);\n");
+    git('add', '.');
+    git('commit', '-q', '-m', 'classifier');
+    const base = git('rev-parse', 'HEAD');
+    // The PR head must not decide its own scope.
+    writeFileSync(path.join(repo, 'scripts/ci/paths.mjs'), "export const scope = 'docs';\n");
+    const run = (baseSha) => {
+      const temp = mkdtempSync(path.join(d, 'runner-'));
+      const output = path.join(temp, 'output');
       writeFileSync(output, '');
-      const result = spawnSync('bash', ['-e', '-c', `git() { ${git}; }\nnode() { ${node}; }\n${step}`], {
-        encoding: 'utf8', env: { ...process.env, BASE_SHA: 'a'.repeat(40), RUNNER_TEMP: d, GITHUB_OUTPUT: output }
-      });
-      return { status: result.status, output: readFileSync(output, 'utf8'), args: result.stdout };
+      const result = spawnSync('bash', ['-eo', 'pipefail', '-c', step], { cwd: repo, encoding: 'utf8',
+        env: { ...process.env, BASE_SHA: baseSha, RUNNER_TEMP: temp, GITHUB_OUTPUT: output } });
+      assert.equal(result.status, 0, result.stderr);
+      return readFileSync(output, 'utf8');
     };
-    const base = run('echo "$*"', 'echo "node $*"; echo scope=product >>"$GITHUB_OUTPUT"');
-    assert.equal(base.status, 0);
-    assert.equal(base.output, 'scope=product\n');
-    assert.equal(readFileSync(path.join(d, 'classify-change.mjs'), 'utf8'), `show ${'a'.repeat(40)}:scripts/ci/classify-change.mjs\n`);
-    assert.match(base.args, new RegExp(`node ${d}/classify-change.mjs`));
-    assert.equal(run('return 128', 'return 0').output, 'scope=full\n');
-    assert.equal(run('return 0', 'return 1').output, 'scope=full\n');
+    assert.equal(run(base), 'scope=product\n');
+    assert.equal(run(empty), 'scope=full\n');
+    assert.equal(run(''), 'scope=full\n');
+    writeFileSync(path.join(repo, 'scripts/ci/classify-change.mjs'), 'process.exit(1);\n');
+    git('commit', '-q', '-am', 'broken classifier');
+    assert.equal(run(git('rev-parse', 'HEAD')), 'scope=full\n');
   } finally {
     rmSync(d, { recursive: true, force: true });
   }
@@ -215,8 +229,8 @@ test('candidate dispatch validates trust before checkout and records success-onl
   assert.match(ci, /git merge-base --is-ancestor "\$REVISION" origin\/dev/);
   assert.match(ci, /run: npm run verify:fast\n\s+if: steps.reuse.outputs.run_id == ''\n\s+- run: npm run verify:full -- --skip-fast\n\s+if: steps.reuse.outputs.run_id == ''/);
   const reuse = ci.match(/id: reuse\n\s+if: \$\{\{ !inputs.full \}\}[\s\S]*?run: \|\n([\s\S]*?)\n\s+# /)[1];
-  assert.match(reuse, /git show "\$GITHUB_SHA:scripts\/ci\/\$file"/);
-  assert.match(reuse, /timeout 120 node "\$RUNNER_TEMP\/full-reuse\/full-reuse.mjs" \|\| echo 'run_id=' >>"\$GITHUB_OUTPUT"/);
+  assert.match(reuse, /git archive "\$GITHUB_SHA" scripts\/ci \| tar -x -C "\$RUNNER_TEMP\/dispatch"/);
+  assert.match(reuse, /timeout 120 node "\$RUNNER_TEMP\/dispatch\/scripts\/ci\/full-reuse.mjs" \|\| echo 'run_id=' >>"\$GITHUB_OUTPUT"/);
   assert.match(ci, /permissions:\n  contents: read\n.*\n  actions: read\n  pull-requests: read\n\n/);
   assert.ok(ci.indexOf('Record successful validation identity') > ci.indexOf('npm run verify:full'));
   assert.match(ci, /run_id: e.GITHUB_RUN_ID, run_attempt: e.GITHUB_RUN_ATTEMPT/);

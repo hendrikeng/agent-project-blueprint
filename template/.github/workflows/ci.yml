@@ -47,7 +47,8 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
         run: |
-          if git show "$BASE_SHA:scripts/ci/classify-change.mjs" >"$RUNNER_TEMP/classify-change.mjs" && node "$RUNNER_TEMP/classify-change.mjs"; then exit 0; fi
+          mkdir -p "$RUNNER_TEMP/base"
+          if git archive "$BASE_SHA" scripts/ci | tar -x -C "$RUNNER_TEMP/base" && node "$RUNNER_TEMP/base/scripts/ci/classify-change.mjs"; then exit 0; fi
           echo 'No usable classifier at the base commit. Selecting full.'
           echo 'scope=full' >>"$GITHUB_OUTPUT"
 
@@ -99,7 +100,7 @@ jobs:
       # ci-candidate.yml reuses this Full only for this exact tree. See scripts/ci/full-reuse.mjs.
       - name: Record the tested tree
         id: tree
-        if: steps.full.outcome == 'success' && github.event_name == 'pull_request'
+        if: steps.full.outcome == 'success' && github.event_name == 'pull_request' && github.base_ref == 'dev'
         run: |
           git rev-parse 'HEAD^{tree}' >"$RUNNER_TEMP/full-tree.txt"
           echo "tree=$(cat "$RUNNER_TEMP/full-tree.txt")" >>"$GITHUB_OUTPUT"

@@ -68,9 +68,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REVISION: ${{ inputs.revision }}
         run: |
-          mkdir -p "$RUNNER_TEMP/full-reuse"
-          for file in full-reuse.mjs classify-change.mjs; do git show "$GITHUB_SHA:scripts/ci/$file" >"$RUNNER_TEMP/full-reuse/$file" || break; done
-          timeout 120 node "$RUNNER_TEMP/full-reuse/full-reuse.mjs" || echo 'run_id=' >>"$GITHUB_OUTPUT"
+          mkdir -p "$RUNNER_TEMP/dispatch"
+          git archive "$GITHUB_SHA" scripts/ci | tar -x -C "$RUNNER_TEMP/dispatch" || true
+          timeout 120 node "$RUNNER_TEMP/dispatch/scripts/ci/full-reuse.mjs" || echo 'run_id=' >>"$GITHUB_OUTPUT"
       # Add date-dependent gates, such as a dependency audit, here: a reused Full does not run them again.
       - run: npm run verify:fast
         if: steps.reuse.outputs.run_id == ''

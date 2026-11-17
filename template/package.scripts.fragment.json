@@ -1,6 +1,6 @@
 {
   "scripts": {
-    "prepare": "git rev-parse --git-dir >/dev/null 2>&1 && git config core.hooksPath .githooks || true",
+    "prepare": "node -e \"try { require('node:child_process').execFileSync('git', ['config', 'core.hooksPath', '.githooks'], { stdio: 'ignore' }) } catch {}\"",
     "bootstrap:verify": "bash ./scripts/bootstrap-verify.sh",
     "bootstrap:cleanup": "node ./scripts/cleanup-bootstrap-artifacts.mjs",
     "context:compile": "node ./scripts/automation/compile-runtime-context.mjs",

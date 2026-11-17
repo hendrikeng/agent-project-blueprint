@@ -6,8 +6,13 @@ const limit = 25;
 
 export default async function* slowestTests(source) {
   const tests = [];
+  // Subtests finish before their parent. A parent includes their time, so only leaf tests count.
+  const lastNesting = new Map();
   for await (const { type, data } of source) {
-    if ((type === 'test:pass' || type === 'test:fail') && data.details?.type !== 'suite') tests.push(data);
+    if (type !== 'test:pass' && type !== 'test:fail') continue;
+    const parent = lastNesting.get(data.file) === data.nesting + 1;
+    lastNesting.set(data.file, data.nesting);
+    if (!parent && data.details?.type !== 'suite') tests.push(data);
   }
   tests.sort((a, b) => b.details.duration_ms - a.details.duration_ms);
   yield `\nSlowest ${Math.min(limit, tests.length)} tests:\n`;

@@ -20,7 +20,8 @@ This limits the heavy checks that run at the same time on one machine. CI and `A
 Do not claim an agent behavioral pass from structural checks or refreshed reports.
 
 The package `prepare` script sets `core.hooksPath` to `.githooks`. The `pre-push` hook is in observe mode.
-On a feature branch, the hook runs `npm run verify:fast` with the scope of the local classifier. It never stops the push.
+If you push the checked-out feature branch, the hook runs `npm run verify:fast` with the scope of the local classifier. It never stops the push.
+For other pushed feature branches, the hook writes `skipped: not checked out`, because the gate checks the working tree.
 The hook writes the time, SHA, branch, scope, result, and duration to `verify-fast-pre-push.log` in the Git directory.
 To skip the gate, set `VERIFY_PRE_PUSH=skip`. The hook writes the skip to the log.
 To enforce the gate later, make the hook exit with the gate status. Keep `VERIFY_PRE_PUSH=skip` as the logged escape.
