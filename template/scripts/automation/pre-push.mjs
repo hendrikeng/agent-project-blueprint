@@ -39,16 +39,19 @@ async function observe({ branch, sha }, head, logPath, classifyChanges) {
   let scope = '';
   let result;
   try {
-    scope = prePushScope(branch, changedEntries(git('merge-base', sha, 'origin/dev'), sha), classifyChanges);
-    if (!scope) return;
     if (process.env.VERIFY_PRE_PUSH === 'skip') result = 'skipped';
-    // verify:fast checks the working tree, so it proves only the checked-out commit.
-    else if (sha !== head) result = 'skipped: not checked out';
-    else if (git('status', '--porcelain', '--untracked-files=no')) result = 'skipped: uncommitted changes';
     else {
-      console.error(`[pre-push] observe mode: npm run verify:fast -- --scope ${scope} (never blocks the push)`);
-      const run = spawnSync('npm', ['run', 'verify:fast', '--', '--scope', scope], { stdio: ['ignore', 'inherit', 'inherit'], shell: process.platform === 'win32' });
-      result = run.status === 0 ? 'pass' : 'fail';
+      scope = prePushScope(branch, changedEntries(git('merge-base', sha, 'origin/dev'), sha), classifyChanges);
+      // verify:fast checks the working tree, so it proves only the checked-out commit without local changes.
+      if (sha !== head) result = 'skipped: not checked out';
+      else if (git('status', '--porcelain', '--untracked-files=no')) result = 'skipped: uncommitted changes';
+      else {
+        console.error(`[pre-push] observe mode: npm run verify:fast -- --scope ${scope} (never blocks the push)`);
+        // Git exports GIT_DIR and similar variables to hooks. Tests that create their own repositories must not see them.
+        const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !/^GIT_(?:DIR|WORK_TREE|INDEX_FILE|COMMON_DIR|OBJECT_DIRECTORY|ALTERNATE_OBJECT_DIRECTORIES|PREFIX|QUARANTINE_PATH)$/.test(key)));
+        const run = spawnSync('npm', ['run', 'verify:fast', '--', '--scope', scope], { env, stdio: ['ignore', 'inherit', 'inherit'], shell: process.platform === 'win32' });
+        result = run.status === 0 ? 'pass' : 'fail';
+      }
     }
   } catch (error) {
     result = `error: ${error instanceof Error ? error.message.split('\n')[0] : String(error)}`;

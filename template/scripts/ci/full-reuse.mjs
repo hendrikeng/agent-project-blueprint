@@ -10,7 +10,7 @@ import { classifyChanges } from './classify-change.mjs';
 
 // Files that decide which checks run. A change to one of them needs a Full run under the new gates.
 export const gateFile = (file) =>
-  /^(?:\.github\/workflows\/|scripts\/ci\/)|^package\.json$|^docs\/governance\/project-gates\.json$|^scripts\/automation\/verify-(?:fast|full)\.mjs$/.test(file);
+  /^(?:\.github\/(?:workflows|actions)\/|scripts\/ci\/)|^package\.json$|^docs\/governance\/project-gates\.json$|^scripts\/automation\/verify-(?:fast|full)\.mjs$/.test(file);
 
 // The PR files API lists at most 3,000 files. A longer list can hide a gate file.
 const fileLimit = 3000;

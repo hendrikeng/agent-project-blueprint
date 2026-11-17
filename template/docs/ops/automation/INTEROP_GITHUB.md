@@ -53,7 +53,7 @@ Product changes run the declared fast project commands. Docs changes run documen
 Harness PRs run broad fast verification before full verification, including product tests, harness regressions, and agent document checks.
 Every code scope retains eval integrity, context freshness, governance, path policy, plan closeout, and harness alignment checks.
 Unknown, deleted, mixed, shared-configuration, and sensitive changes select broad fast validation.
-Changes to `.github/workflows/**` or `scripts/ci/**` select full. CI runs the classifier from the PR base commit, so a PR cannot narrow its own scope.
+Changes to `.github/workflows/**`, `.github/actions/**`, or `scripts/ci/**` select full. CI runs the classifier from the PR base commit, so a PR cannot narrow its own scope.
 If the base commit has no usable classifier, CI selects full.
 
 Full validation runs for broad or harness PRs, selected candidates, PRs to `main`, and `main` merge groups.
@@ -99,7 +99,7 @@ The candidate does not repeat a green PR Full run of the exact same tree. `scrip
 
 - A same-repository PR merged into `dev` has the revision as its merge commit.
 - The PR file list is complete and nonempty, and the PR scope ran the Full tier.
-- The PR and the dispatch commit do not change gate files: workflows, `scripts/ci/**`, `package.json`, project gates, and the verify scripts.
+- The PR and the dispatch commit do not change gate files: workflows, local actions, `scripts/ci/**`, `package.json`, project gates, and the verify scripts.
 - The `ci.yml` run of the PR head succeeded, `Fast Gate` and `Full Gate` succeeded, and its `full-tree-<tree>` artifact is current.
 
 Any doubt, error, or timeout runs Full. The job summary lists each miss reason.

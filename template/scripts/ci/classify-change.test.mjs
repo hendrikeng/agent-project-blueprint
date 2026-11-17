@@ -25,7 +25,7 @@ test('explicit categories narrow only recognized non-sensitive changes', () => {
     ['src/components/AuthorsList.tsx', 'product'], ['src/authentication.ts', 'broad'], ['apps/api/src/services/authorization.ts', 'broad'], ['src/sessionToken.ts', 'broad'],
     ['src/payments/money.ts', 'broad'], ['src/app.config.ts', 'broad'],
     ['package-lock.json', 'broad'], ['.github/workflows/ci.yml', 'full'],
-    ['scripts/ci/classify-change.mjs', 'full'], ['unexpected.xyz', 'broad']
+    ['scripts/ci/classify-change.mjs', 'full'], ['.github/actions/setup/action.yml', 'full'], ['unexpected.xyz', 'broad']
   ]) assert.equal(classifyChanges([change(path)]), scope, path);
   for (const status of ['D', 'R100', 'T', 'U']) assert.equal(classifyChanges([change('src/card.ts', status)]), 'broad');
   assert.equal(classifyChanges([]), 'broad');

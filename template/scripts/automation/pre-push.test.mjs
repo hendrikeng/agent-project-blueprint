@@ -37,7 +37,7 @@ test('pre-push logs a failed fast gate and still lets the push continue', async 
   const root = await createScriptsRepo(t);
   const git = (...args) => spawnSync('git', args, { cwd: root, encoding: 'utf8' });
   await fs.writeFile(path.join(root, 'package.json'), JSON.stringify({
-    scripts: { 'verify:fast': 'node -e "console.log(process.argv.slice(1).join(\' \')); process.exit(3)"' }
+    scripts: { 'verify:fast': 'node -e "console.log(process.argv.slice(1).join(\' \'), \'GIT_DIR=\' + process.env.GIT_DIR); process.exitCode = 3" --' }
   }));
   git('init', '-q', '-b', 'dev');
   git('-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-q', '--allow-empty', '-m', 'base');
@@ -55,9 +55,9 @@ test('pre-push logs a failed fast gate and still lets the push continue', async 
   });
   const pushSlice = `refs/heads/slice/x ${sha} refs/heads/slice/x ${'0'.repeat(40)}\n`;
 
-  const failed = hook(pushSlice);
+  const failed = hook(pushSlice, { GIT_DIR: path.join(root, '.git') });
   assert.equal(failed.status, 0, failed.stderr);
-  assert.match(failed.stdout, /--scope product/);
+  assert.match(failed.stdout, /--scope product GIT_DIR=undefined/);
   assert.equal(hook(pushSlice, { VERIFY_PRE_PUSH: 'skip' }).status, 0);
   await fs.writeFile(path.join(root, 'src/card.ts'), 'export const dirty = 1;\n');
   assert.doesNotMatch(hook(pushSlice).stdout, /--scope/, 'the gate checks the working tree, not the pushed commit');
@@ -73,7 +73,7 @@ test('pre-push logs a failed fast gate and still lets the push continue', async 
   const lines = (await fs.readFile(logPath, 'utf8')).trim().split('\n').map((line) => line.split('\t'));
   assert.deepEqual(lines.map((fields) => fields.slice(1, 5)), [
     [sha, 'slice/x', 'product', 'fail'],
-    [sha, 'slice/x', 'product', 'skipped'],
+    [sha, 'slice/x', '', 'skipped'],
     [sha, 'slice/x', 'product', 'skipped: uncommitted changes'],
     [sha, 'slice/x', 'product', 'skipped: not checked out']
   ], 'dev pushes run no gate and write no line');

@@ -19,7 +19,9 @@ If `agent-heavy` is on `PATH`, each project gate, the changed-file lint, and the
 This limits the heavy checks that run at the same time on one machine. CI and `AGENT_HEAVY=0` run the commands directly.
 Do not claim an agent behavioral pass from structural checks or refreshed reports.
 
-If `.githooks` exists and Git has no hooks path, the package `prepare` script sets `core.hooksPath` to `.githooks`.
+The package `prepare` script runs `scripts/automation/install-hooks.mjs`. It sets `core.hooksPath` to `.githooks`.
+If `.githooks` is not at the repository root, if Git has a hooks path, or if `.git/hooks` has active hooks, the script changes nothing.
+In that case, call `scripts/automation/pre-push.mjs` from your pre-push hook.
 The `pre-push` hook is in observe mode.
 If you push the checked-out feature branch, the hook runs `npm run verify:fast` with the scope of the local classifier. It never stops the push.
 The gate checks the working tree. If the pushed commit is not checked out, or if tracked files have changes, the hook writes a skip.

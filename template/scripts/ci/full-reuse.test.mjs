@@ -54,6 +54,6 @@ test('any doubt about the tree, the run, or the gates runs Full', () => {
 });
 
 test('gate files cover workflows, CI scripts, package scripts, and gate definitions', () => {
-  for (const file of ['.github/workflows/ci.yml', 'scripts/ci/full-reuse.mjs', 'package.json', 'docs/governance/project-gates.json', 'scripts/automation/verify-full.mjs']) assert.equal(gateFile(file), true, file);
+  for (const file of ['.github/workflows/ci.yml', '.github/actions/setup/action.yml', 'scripts/ci/full-reuse.mjs', 'package.json', 'docs/governance/project-gates.json', 'scripts/automation/verify-full.mjs']) assert.equal(gateFile(file), true, file);
   for (const file of ['src/package.json.ts', 'docs/ci.md', 'scripts/automation/verify-deploy.mjs']) assert.equal(gateFile(file), false, file);
 });
