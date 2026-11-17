@@ -25,11 +25,12 @@ test('pre-push reads pushed branches from Git and ignores deletions and tags', (
   const zero = '0'.repeat(40);
   assert.deepEqual(pushedBranches([
     `refs/heads/slice/x ${sha} refs/heads/slice/x ${zero}`,
+    `HEAD ${sha} refs/heads/fix/y ${zero}`,
     `(delete) ${zero} refs/heads/old ${sha}`,
     `refs/heads/gone ${zero} refs/heads/gone ${sha}`,
     `refs/tags/v1 ${sha} refs/tags/v1 ${zero}`,
     ''
-  ].join('\n')), [{ branch: 'slice/x', sha }]);
+  ].join('\n')), [{ branch: 'slice/x', sha }, { branch: 'fix/y', sha }]);
 });
 
 test('pre-push logs a failed fast gate and still lets the push continue', async (t) => {
@@ -58,16 +59,22 @@ test('pre-push logs a failed fast gate and still lets the push continue', async 
   assert.equal(failed.status, 0, failed.stderr);
   assert.match(failed.stdout, /--scope product/);
   assert.equal(hook(pushSlice, { VERIFY_PRE_PUSH: 'skip' }).status, 0);
+  await fs.writeFile(path.join(root, 'src/card.ts'), 'export const dirty = 1;\n');
+  assert.doesNotMatch(hook(pushSlice).stdout, /--scope/, 'the gate checks the working tree, not the pushed commit');
+  git('checkout', '-q', '--', 'src/card.ts');
   git('checkout', '-q', 'dev');
   const elsewhere = hook(pushSlice);
   assert.equal(elsewhere.status, 0, elsewhere.stderr);
   assert.doesNotMatch(elsewhere.stdout, /--scope/, 'the gate checks the working tree, not the pushed commit');
+  // A protected branch writes nothing, even without an origin/dev ref.
+  git('update-ref', '-d', 'refs/remotes/origin/dev');
   const devSha = git('rev-parse', 'HEAD').stdout.trim();
   assert.equal(hook(`refs/heads/dev ${devSha} refs/heads/dev ${'0'.repeat(40)}\n`).status, 0);
   const lines = (await fs.readFile(logPath, 'utf8')).trim().split('\n').map((line) => line.split('\t'));
   assert.deepEqual(lines.map((fields) => fields.slice(1, 5)), [
     [sha, 'slice/x', 'product', 'fail'],
     [sha, 'slice/x', 'product', 'skipped'],
+    [sha, 'slice/x', 'product', 'skipped: uncommitted changes'],
     [sha, 'slice/x', 'product', 'skipped: not checked out']
   ], 'dev pushes run no gate and write no line');
 });

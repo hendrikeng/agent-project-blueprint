@@ -166,6 +166,7 @@ test('the scope step runs the base classifier and selects full without one', () 
   assert.match(ci, /BASE_SHA: \$\{\{ github.event.pull_request.base.sha \|\| github.event.merge_group.base_sha \}\}/);
   const d = mkdtempSync(path.join(tmpdir(), 'scope-step-'));
   try {
+    // GitHub runs an unnamed shell as `bash -e`, without pipefail.
     const repo = path.join(d, 'repo');
     const git = (...args) => spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', ...args], { cwd: repo, encoding: 'utf8' }).stdout.trim();
     mkdirSync(path.join(repo, 'scripts/ci'), { recursive: true });
@@ -184,7 +185,7 @@ test('the scope step runs the base classifier and selects full without one', () 
       const temp = mkdtempSync(path.join(d, 'runner-'));
       const output = path.join(temp, 'output');
       writeFileSync(output, '');
-      const result = spawnSync('bash', ['-eo', 'pipefail', '-c', step], { cwd: repo, encoding: 'utf8',
+      const result = spawnSync('bash', ['-e', '-c', step], { cwd: repo, encoding: 'utf8',
         env: { ...process.env, BASE_SHA: baseSha, RUNNER_TEMP: temp, GITHUB_OUTPUT: output } });
       assert.equal(result.status, 0, result.stderr);
       return readFileSync(output, 'utf8');

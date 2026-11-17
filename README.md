@@ -132,7 +132,8 @@ The script fragment is bootstrap-only. An update does not merge its new commands
 
    Compare all blueprint-owned commands with the updated `template/package.scripts.fragment.json` and merge any other missing or changed commands.
    `harness:test` now has a per-test timeout and a slowest-tests report. `harness:verify` requires the new command.
-   The new `prepare` script installs the observe-mode `.githooks/pre-push` hook. If `prepare` already exists, add the `core.hooksPath` command to it.
+   The new `prepare` script installs the observe-mode `.githooks/pre-push` hook. Harness updates do not copy `.githooks/**`, so copy it first.
+   If the project already uses another hooks path, `prepare` keeps it. Then call `scripts/automation/pre-push.mjs` from the existing pre-push hook.
 6. Manually merge the changed project contracts from the updated templates. Keep local facts, instructions, gates, and design conventions.
    - `AGENTS.md` and `docs/README.md`: startup reading, task-map routing, and the Engineering Invariants reference.
    - `README.md` and `docs/product-specs/CURRENT-STATE.md`: current capabilities, source anchors, unresolved gaps, and snapshot maintenance.

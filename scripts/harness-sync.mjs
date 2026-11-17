@@ -658,7 +658,7 @@ async function installOrUpdate(targetDir, manifest, copyEntries, managedEntries,
     await fs.mkdir(path.dirname(targetPath), { recursive: true });
     if (configured) {
       await writeTextFileAtomic(targetPath, configured.contents.get(entry.targetPath));
-      // Keep the source mode, so Git hooks stay executable.
+      // Keep the source mode, so executable scripts stay executable.
       await fs.chmod(targetPath, (await fs.stat(sourcePath)).mode & 0o777);
     } else await fs.copyFile(sourcePath, targetPath);
     copied.push(entry.targetPath);

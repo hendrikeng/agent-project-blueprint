@@ -9,9 +9,11 @@ import { pathToFileURL } from 'node:url';
 
 const git = (...args) => execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
 
+export const featureBranch = (branch) => Boolean(branch) && !['HEAD', 'dev', 'main'].includes(branch) && !branch.startsWith('release/');
+
 // Returns the verify:fast scope, or null for branches that are not feature branches.
 export function prePushScope(branch, entries, classifyChanges) {
-  if (!branch || ['HEAD', 'dev', 'main'].includes(branch) || branch.startsWith('release/')) return null;
+  if (!featureBranch(branch)) return null;
   const scope = classifyChanges(entries);
   return ['product', 'docs', 'harness'].includes(scope) ? scope : 'broad';
 }
@@ -25,12 +27,14 @@ function changedEntries(base, sha) {
 
 // Git passes one `<local ref> <local sha> <remote ref> <remote sha>` line per pushed ref on stdin.
 export function pushedBranches(stdin) {
+  // The remote ref names the branch: the local side can be `HEAD` or a SHA.
   return stdin.split('\n').map((line) => line.trim().split(/\s+/))
-    .filter(([ref, sha]) => ref?.startsWith('refs/heads/') && /^[0-9a-f]{40,64}$/.test(sha ?? '') && !/^0+$/.test(sha))
-    .map(([ref, sha]) => ({ branch: ref.slice('refs/heads/'.length), sha }));
+    .filter(([, sha, ref]) => ref?.startsWith('refs/heads/') && /^[0-9a-f]{40,64}$/.test(sha ?? '') && !/^0+$/.test(sha))
+    .map(([, sha, ref]) => ({ branch: ref.slice('refs/heads/'.length), sha }));
 }
 
 async function observe({ branch, sha }, head, logPath, classifyChanges) {
+  if (!featureBranch(branch)) return;
   const started = Date.now();
   let scope = '';
   let result;
@@ -40,6 +44,7 @@ async function observe({ branch, sha }, head, logPath, classifyChanges) {
     if (process.env.VERIFY_PRE_PUSH === 'skip') result = 'skipped';
     // verify:fast checks the working tree, so it proves only the checked-out commit.
     else if (sha !== head) result = 'skipped: not checked out';
+    else if (git('status', '--porcelain', '--untracked-files=no')) result = 'skipped: uncommitted changes';
     else {
       console.error(`[pre-push] observe mode: npm run verify:fast -- --scope ${scope} (never blocks the push)`);
       const run = spawnSync('npm', ['run', 'verify:fast', '--', '--scope', scope], { stdio: ['ignore', 'inherit', 'inherit'], shell: process.platform === 'win32' });
