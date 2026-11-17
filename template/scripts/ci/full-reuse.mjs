@@ -8,6 +8,9 @@ import { appendFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { classifyChanges } from './classify-change.mjs';
 
+// Workflow files and CI scripts come from the dispatch commit. The candidate takes the rest from the revision.
+const workflowFile = (file) => /^(?:\.github\/(?:workflows|actions)\/|scripts\/ci\/)/.test(file);
+
 // Files that decide which checks run. A change to one of them needs a Full run under the new gates.
 export const gateFile = (file) =>
   /^(?:\.github\/(?:workflows|actions)\/|scripts\/ci\/)|^package\.json$|^docs\/governance\/project-gates\.json$|^scripts\/automation\/verify-(?:fast|full)\.mjs$/.test(file);
@@ -75,7 +78,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       revision,
       tree: git('rev-parse', `${revision}^{tree}`).trim(),
       // `-z` output: a path can contain a newline.
-      gateDrift: git('diff', '--name-only', '-z', '--no-renames', revision, process.env.GITHUB_SHA ?? 'HEAD').split('\0').filter(Boolean).filter(gateFile),
+      gateDrift: git('diff', '--name-only', '-z', '--no-renames', revision, process.env.GITHUB_SHA ?? 'HEAD').split('\0').filter(Boolean).filter(workflowFile),
       pulls: api(`commits/${revision}/pulls`, '.[] | tojson'),
       filesOf: (pull) => api(`pulls/${pull}/files?per_page=100`, '.[] | {filename, status, previous_filename} | tojson'),
       runsOf: (head) => api(`actions/workflows/ci.yml/runs?event=pull_request&head_sha=${head}&per_page=100`, '.workflow_runs[] | tojson'),

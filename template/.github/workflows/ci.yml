@@ -40,9 +40,8 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           package-manager-cache: false
-      - run: npm run pr:verify
-        if: github.event_name == 'pull_request'
       # Run the classifier of the base commit, so a PR cannot narrow its own scope. Without one, select full.
+      # This step runs before any PR code. A PR can still edit this workflow, so review workflow changes.
       - id: scope
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
@@ -51,6 +50,8 @@ jobs:
           if git archive "$BASE_SHA" scripts/ci | tar -x -C "$RUNNER_TEMP/base" && node "$RUNNER_TEMP/base/scripts/ci/classify-change.mjs"; then exit 0; fi
           echo 'No usable classifier at the base commit. Selecting full.'
           echo 'scope=full' >>"$GITHUB_OUTPUT"
+      - run: npm run pr:verify
+        if: github.event_name == 'pull_request'
 
   fast-gate:
     # Metadata uses different names: it must never replace code-check evidence.

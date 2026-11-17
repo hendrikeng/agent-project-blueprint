@@ -17,9 +17,11 @@ let reason = '';
 // The hook runs ./scripts/automation/pre-push.mjs from the repository root, so the package must be that root.
 if (!top || fs.realpathSync(top) !== fs.realpathSync(process.cwd())) reason = 'the package is not at the repository root';
 else if (!fs.existsSync(path.join(top, '.githooks'))) reason = 'no .githooks directory';
+else if (hooksPath === '.githooks') reason = 'already installed';
 else if (hooksPath) reason = `core.hooksPath is already ${hooksPath}`;
 else if (fs.existsSync(hooksDir) && fs.readdirSync(hooksDir).some((name) => !name.endsWith('.sample'))) reason = `${hooksDir} has active hooks`;
-if (reason) console.log(`[install-hooks] kept the current Git hooks: ${reason}. Call scripts/automation/pre-push.mjs from your pre-push hook.`);
+if (reason === 'already installed') console.log('[install-hooks] core.hooksPath is already .githooks.');
+else if (reason) console.log(`[install-hooks] kept the current Git hooks: ${reason}. Call scripts/automation/pre-push.mjs from your pre-push hook.`);
 else {
   git('config', 'core.hooksPath', '.githooks');
   console.log('[install-hooks] core.hooksPath set to .githooks.');

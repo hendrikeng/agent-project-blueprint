@@ -99,12 +99,14 @@ The candidate does not repeat a green PR Full run of the exact same tree. `scrip
 
 - A same-repository PR merged into `dev` has the revision as its merge commit.
 - The PR file list is complete and nonempty, and the PR scope ran the Full tier.
-- The PR and the dispatch commit do not change gate files: workflows, local actions, `scripts/ci/**`, `package.json`, project gates, and the verify scripts.
+- The PR does not change gate files: workflows, local actions, `scripts/ci/**`, `package.json`, project gates, and the verify scripts.
+- The dispatch commit has the same workflows, local actions, and `scripts/ci/**` as the revision.
 - The `ci.yml` run of the PR head succeeded, `Fast Gate` and `Full Gate` succeeded, and its `full-tree-<tree>` artifact is current.
 
 Any doubt, error, or timeout runs Full. The job summary lists each miss reason.
 The `Full Reuse Lookup` job runs the dispatch commit, not the revision under test. Only this job has `actions: read` and `pull-requests: read`.
 Set the `full` dispatch input to force Full.
+Reuse needs `dev` as the default branch. GitHub lists the merged PR of a commit only on the default branch, and the lookup compares workflow files with the dispatch commit.
 A reused Full does not run date-dependent gates again. Add a dependency audit to the reuse path if the project has one.
 Release PRs do not reuse Full. The lookup needs `actions: read` and `pull-requests: read`, and `ci.yml` keeps only `contents: read`.
 

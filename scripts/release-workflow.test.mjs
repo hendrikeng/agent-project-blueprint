@@ -162,7 +162,7 @@ test('risk PRs run full once ci:full is added, and Full Gate requires it', () =>
 
 test('the scope step runs the base classifier and selects full without one', () => {
   const ci = workflow('ci');
-  const step = ci.match(/- id: scope\n[\s\S]*?run: \|\n([\s\S]*?)\n\n/)[1];
+  const step = ci.match(/- id: scope\n[\s\S]*?run: \|\n([\s\S]*?)\n      - run: npm run pr:verify/)[1];
   assert.match(ci, /BASE_SHA: \$\{\{ github.event.pull_request.base.sha \|\| github.event.merge_group.base_sha \}\}/);
   const d = mkdtempSync(path.join(tmpdir(), 'scope-step-'));
   try {
@@ -257,7 +257,9 @@ test('candidate dispatch validates trust before checkout and records success-onl
   assert.match(ci, /run_id: e.GITHUB_RUN_ID, run_attempt: e.GITHUB_RUN_ATTEMPT/);
   assert.match(ci, /name: ci-candidate-\$\{\{ inputs.revision \}\}/);
   assert.match(ci, /if-no-files-found: error\s+overwrite: true/);
-  assert.doesNotMatch(ci, /if: always|continue-on-error|secrets:|environment:|contents: write/);
+  assert.match(lookup, /continue-on-error: true/);
+  assert.doesNotMatch(ci.split('\n  candidate:\n')[1], /if: always|continue-on-error/);
+  assert.doesNotMatch(ci, /if: always|secrets:|environment:|contents: write/);
 });
 
 test('release tags preserve landed and source identities atomically', () => {

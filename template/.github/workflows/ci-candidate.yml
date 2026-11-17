@@ -30,6 +30,8 @@ jobs:
   reuse:
     name: Full Reuse Lookup
     if: ${{ !inputs.full }}
+    # A failed lookup runs Full and must not fail the candidate run.
+    continue-on-error: true
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
