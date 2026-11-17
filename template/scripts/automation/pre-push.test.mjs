@@ -4,19 +4,19 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 
-import { classifyChanges } from '../ci/classify-change.mjs';
 import { prePushScope, pushedBranches } from './pre-push.mjs';
 import { createScriptsRepo } from './test-helpers.mjs';
 
 const change = (filePath) => ({ status: 'M', path: filePath });
 
+// The classifier is project-owned, so these tests use stubs instead of its categories.
 test('pre-push selects the local classifier scope only on feature branches', () => {
+  const entries = [{ status: 'M', path: 'src/card.ts' }];
   for (const branch of ['', 'HEAD', 'dev', 'main', 'release/2026.01.01.1']) {
-    assert.equal(prePushScope(branch, [change('src/card.ts')], classifyChanges), null, branch);
+    assert.equal(prePushScope(branch, entries, () => 'product'), null, branch);
   }
-  assert.equal(prePushScope('slice/x', [change('src/card.ts')], classifyChanges), 'product');
-  assert.equal(prePushScope('slice/x', [change('docs/product-specs/cards.md')], classifyChanges), 'docs');
-  assert.equal(prePushScope('fix/x', [change('.github/workflows/ci.yml')], () => 'full'), 'broad');
+  for (const scope of ['product', 'docs', 'harness']) assert.equal(prePushScope('slice/x', entries, () => scope), scope);
+  assert.equal(prePushScope('fix/x', entries, () => 'full'), 'broad');
   assert.equal(prePushScope('fix/x', [], () => 'unexpected'), 'broad');
 });
 
@@ -36,6 +36,7 @@ test('pre-push reads pushed branches from Git and ignores deletions and tags', (
 test('pre-push logs a failed fast gate and still lets the push continue', async (t) => {
   const root = await createScriptsRepo(t);
   const git = (...args) => spawnSync('git', args, { cwd: root, encoding: 'utf8' });
+  await fs.writeFile(path.join(root, 'scripts/ci/classify-change.mjs'), "export const classifyChanges = (entries) => entries.some(({ path }) => path === 'src/card.ts') ? 'product' : 'broad';\n");
   await fs.writeFile(path.join(root, 'package.json'), JSON.stringify({
     scripts: { 'verify:fast': 'node -e "console.log(process.argv.slice(1).join(\' \'), \'GIT_DIR=\' + process.env.GIT_DIR); process.exitCode = 3" --' }
   }));

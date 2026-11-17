@@ -8,8 +8,10 @@ import { createScriptsRepo } from './test-helpers.mjs';
 
 test('install-hooks sets the hooks path only when no other hooks are active', async (t) => {
   const root = await createScriptsRepo(t);
-  const git = (...args) => spawnSync('git', args, { cwd: root, encoding: 'utf8' }).stdout.trim();
-  const install = (cwd = root) => spawnSync('node', [path.join(root, 'scripts/automation/install-hooks.mjs')], { cwd, encoding: 'utf8' });
+  // A global or system hooks path on the test machine must not change the result.
+  const env = { ...process.env, GIT_CONFIG_GLOBAL: path.join(root, 'no-global-config'), GIT_CONFIG_NOSYSTEM: '1' };
+  const git = (...args) => spawnSync('git', args, { cwd: root, encoding: 'utf8', env }).stdout.trim();
+  const install = (cwd = root) => spawnSync('node', [path.join(root, 'scripts/automation/install-hooks.mjs')], { cwd, encoding: 'utf8', env });
   git('init', '-q');
   await fs.rm(path.join(root, '.git/hooks'), { recursive: true, force: true });
 

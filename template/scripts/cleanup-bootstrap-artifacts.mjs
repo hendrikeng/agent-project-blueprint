@@ -59,7 +59,9 @@ async function assertPackageScriptsMerged() {
   const missing = [];
   for (const [scriptName, expected] of Object.entries(fragment.scripts ?? {})) {
     const actual = String(packageJson.scripts?.[scriptName] ?? '').trim();
-    if (actual !== String(expected).trim()) {
+    // A project can chain the hook installer into its own `prepare`, for example after husky.
+    const merged = scriptName === 'prepare' ? actual.includes(String(expected).trim()) : actual === String(expected).trim();
+    if (!merged) {
       missing.push(scriptName);
     }
   }
