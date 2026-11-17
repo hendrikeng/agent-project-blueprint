@@ -27,5 +27,5 @@ If you push the checked-out feature branch, the hook runs `npm run verify:fast` 
 The gate checks the working tree. If the pushed commit is not checked out, or if tracked files have changes, the hook writes a skip.
 The hook writes the time, SHA, branch, scope, result, and duration to `verify-fast-pre-push.log` in the Git directory.
 To skip the gate, set `VERIFY_PRE_PUSH=skip`. The hook writes the skip to the log.
-To enforce the gate later, make the hook exit with the gate status. Keep `VERIFY_PRE_PUSH=skip` as the logged escape.
+To enforce the gate later, make `pre-push.mjs` exit with the gate status and remove `exit 0` from the hook. Keep `VERIFY_PRE_PUSH=skip` as the logged escape.
 Do not install AI reviews as Git hooks.

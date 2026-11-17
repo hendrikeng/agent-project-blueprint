@@ -1,6 +1,6 @@
 {
   "scripts": {
-    "prepare": "node ./scripts/automation/install-hooks.mjs",
+    "prepare": "node -e \"import('./scripts/automation/install-hooks.mjs').catch(() => {})\"",
     "bootstrap:verify": "bash ./scripts/bootstrap-verify.sh",
     "bootstrap:cleanup": "node ./scripts/cleanup-bootstrap-artifacts.mjs",
     "context:compile": "node ./scripts/automation/compile-runtime-context.mjs",
