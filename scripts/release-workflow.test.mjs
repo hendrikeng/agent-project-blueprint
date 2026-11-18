@@ -262,6 +262,21 @@ test('candidate dispatch validates trust before checkout and records success-onl
   assert.doesNotMatch(ci, /if: always|secrets:|environment:|contents: write/);
 });
 
+test('only PRs outside main run the light mode, and a candidate reuse runs the full mode again', () => {
+  const ci = workflow('ci');
+  const candidate = workflow('ci-candidate');
+  const fastGate = ci.split('  fast-gate:\n')[1].split(/\n  [\w-]+:\n/)[0];
+  const light = fastGate.match(/^    env:\n(?:      #[^\n]*\n)*      CI_LIGHT_MODE: \$\{\{ (.+) \}\}$/m)[1];
+  const evaluate = (github) => new Function('github', `return (${light})`)(github);
+  // Full mode is empty, so a test that checks truthiness also runs the full mode.
+  assert.equal(evaluate({ event_name: 'pull_request', base_ref: 'dev' }), 'true');
+  assert.equal(evaluate({ event_name: 'pull_request', base_ref: 'main' }), '');
+  assert.equal(evaluate({ event_name: 'merge_group' }), '');
+  // template/scripts/ci/full-mode-proof.test.mjs rejects any other setter or reader in .github.
+  assert.match(candidate, /- run: npm run verify:full -- --skip-fast\n\s+if: needs.reuse.outputs.run_id == ''\n(?:\s+#[^\n]*\n)?\s+- name: Run the light-mode tests in full mode\n\s+if: needs.reuse.outputs.run_id != ''\n\s+run: node scripts\/ci\/full-mode-proof.mjs\n/);
+  assert.ok(candidate.indexOf('full-mode-proof.mjs') < candidate.indexOf('Record successful validation identity'));
+});
+
 test('release tags preserve landed and source identities atomically', () => {
   const tags = workflow('release-tag');
   assert.match(tags, /github.event.pull_request.merged == true/);
