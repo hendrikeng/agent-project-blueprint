@@ -87,6 +87,29 @@ Give the project test lanes the same guards:
 
 Harness tests that read only scripts use `createScriptsRepo()`. A full repository copy is slow in a large project.
 
+### Light Test Mode
+
+A test with an expensive full mode can run a lighter mode on PRs outside `main`.
+Examples are many stress rounds or a long sweep. `ci.yml` sets `CI_LIGHT_MODE=true` in `Fast Gate` only for those PRs.
+PRs into `main`, merge groups, and `ci-candidate.yml` keep the full mode. A test must treat every other value as full mode.
+
+Use a light mode only when both conditions are true:
+
+- The full mode costs many CI minutes on each PR.
+- The light mode still exercises the same behavior, with fewer rounds or inputs.
+
+Do not use it to skip a behavior, an assertion, or a security, money, or data-integrity check. Keep cheap tests in full mode.
+
+To declare a light mode, add each test to `lightModeTests` in `scripts/ci/full-mode-proof.mjs`.
+Set `fullModeCommand` to a command that runs only those test files and writes a JUnit report to `$FULL_MODE_REPORT`.
+Its test fails if a file outside `docs/`, `scripts/ci/`, and Markdown reads `CI_LIGHT_MODE` and has no declaration.
+If no test declares a light mode, the variable has no effect and the script does nothing.
+
+If the candidate reuses a PR Full run, it runs `full-mode-proof.mjs`, because that run used the light mode.
+The script runs the declared tests without `CI_LIGHT_MODE`.
+The candidate fails unless each declared test passed once and no test failed. A missing report or a timeout also fails it.
+A candidate without reuse runs `verify:full` in full mode. Each successful candidate artifact therefore proves the full mode.
+
 ### Selected Candidate Proof
 
 `.github/workflows/ci-candidate.yml` accepts a required lowercase 40-character `revision` SHA through `workflow_dispatch`.
@@ -104,6 +127,7 @@ The candidate does not repeat a green PR Full run of the exact same tree. `scrip
 - The `ci.yml` run of the PR head succeeded, `Fast Gate` and `Full Gate` succeeded, and its `full-tree-<tree>` artifact is current.
 
 Any doubt, error, or timeout runs Full. The job summary lists each miss reason.
+A reuse runs the [light-mode tests](#light-test-mode) again in full mode.
 The `Full Reuse Lookup` job runs the dispatch commit, not the revision under test. Only this job has `actions: read` and `pull-requests: read`.
 Set the `full` dispatch input to force Full.
 Reuse needs `dev` as the default branch. GitHub lists the merged PR of a commit only on the default branch, and the lookup compares workflow files with the dispatch commit.
