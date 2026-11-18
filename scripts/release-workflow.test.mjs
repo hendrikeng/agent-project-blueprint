@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -272,12 +272,7 @@ test('only PRs outside main run the light mode, and a candidate reuse runs the f
   assert.equal(evaluate({ event_name: 'pull_request', base_ref: 'dev' }), 'true');
   assert.equal(evaluate({ event_name: 'pull_request', base_ref: 'main' }), '');
   assert.equal(evaluate({ event_name: 'merge_group' }), '');
-  // No other job, workflow, or action selects the light mode.
-  const github = new URL('../template/.github/', import.meta.url);
-  const setters = readdirSync(github, { recursive: true })
-    .filter((file) => statSync(new URL(file, github)).isFile() && /CI_LIGHT_MODE\W*[:=]/.test(readFileSync(new URL(file, github), 'utf8')));
-  assert.deepEqual(setters, [path.join('workflows', 'ci.yml')]);
-  assert.equal((ci.match(/CI_LIGHT_MODE:/g) ?? []).length, 1);
+  // template/scripts/ci/full-mode-proof.test.mjs rejects any other setter or reader in .github.
   assert.match(candidate, /- run: npm run verify:full -- --skip-fast\n\s+if: needs.reuse.outputs.run_id == ''\n(?:\s+#[^\n]*\n)?\s+- name: Run the light-mode tests in full mode\n\s+if: needs.reuse.outputs.run_id != ''\n\s+run: node scripts\/ci\/full-mode-proof.mjs\n/);
   assert.ok(candidate.indexOf('full-mode-proof.mjs') < candidate.indexOf('Record successful validation identity'));
 });
