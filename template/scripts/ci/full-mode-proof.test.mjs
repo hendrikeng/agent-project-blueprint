@@ -15,7 +15,8 @@ const passing = report(testcase('holds the lock under load'), testcase('reverses
 test('a report where each declared test passed once proves the full mode', () => {
   assert.deepEqual(fullModeProblems(passing, tests), []);
   // Names are XML-escaped. node:test names the file in `file`, pytest in a dotted `classname`.
-  assert.deepEqual(fullModeProblems(report(testcase('a &lt;b&gt; &amp; &#99;', '', 'classname="x"')), [{ file: 'x', name: 'a <b> & c' }]), []);
+  assert.deepEqual(fullModeProblems(report(testcase('a &lt;b&gt; &amp; &#99; &#x110000; &constructor;', '', 'classname="x"')), [{ file: 'x', name: 'a <b> & c &#x110000; &constructor;' }]), []);
+  assert.deepEqual(fullModeProblems(report(testcase('holds the lock under load', '<system-out><![CDATA[<skipped/> <failure/>]]></system-out>'), testcase('reverses each value')), tests), []);
   assert.deepEqual(fullModeProblems(report(testcase('t', '', 'classname="t" file="/w/tests/load.test.mjs"')), [{ file: 'tests/load.test.mjs', name: 't' }]), []);
   assert.deepEqual(fullModeProblems(report(testcase('t', '', 'classname="tests.test_load.TestLock"')), [{ file: 'tests/test_load.py', name: 't' }]), []);
   // Two declared files can share a test name.
@@ -29,6 +30,7 @@ test('a skipped, failed, missing, or repeated test, or any other failure, proves
     ['error', report(testcase('holds the lock under load'), testcase('reverses each value', '<error/>')), /sweep.test.mjs did not pass/],
     ['missing', report(testcase('holds the lock under load')), /sweep.test.mjs did not pass/],
     ['same name in another file', report(testcase('holds the lock under load', '', 'classname="tests/overload.test.mjs"'), testcase('reverses each value')), /load.test.mjs did not pass/],
+    ['same name in another directory', report(testcase('holds the lock under load', '', 'classname="tests/integration/load.test.mjs"'), testcase('reverses each value')), /load.test.mjs did not pass/],
     ['same name in another pytest module', report(testcase('holds the lock under load', '', 'classname="tests.test_load_extra"'), testcase('reverses each value')), /load.test.mjs did not pass/],
     ['repeated', report(testcase('holds the lock under load'), testcase('holds the lock under load'), testcase('reverses each value')), /load.test.mjs did not pass/],
     ['other test failed', report(testcase('holds the lock under load'), testcase('reverses each value'), testcase('other', '<failure/>')), /1 test\(s\) failed/],
@@ -61,8 +63,11 @@ test('every file that reads the light mode is declared', () => {
     return entry.isFile() && readFileSync(path.join(root, file)).includes(lightModeEnv) ? [file] : [];
   });
   // git grep exits 1 when no file matches.
-  const matches = grep.status <= 1 ? grep.stdout.split('\0').filter(Boolean) : walk('');
-  // Workflows set the variable, this script checks it, and docs describe it.
-  const readers = matches.filter((file) => !/^(?:\.github\/workflows|docs)\/|^scripts\/ci\/full-mode-proof\.(?:test\.)?mjs$|\.md$/.test(file));
+  const matches = grep.status === 0 || grep.status === 1 ? grep.stdout.split('\0').filter(Boolean) : walk('');
+  // Only ci.yml sets the variable. ci-candidate.yml names it in a comment. This script checks it, and docs describe it.
+  const readers = matches.filter((file) => !/^docs\/|^\.github\/workflows\/ci(?:-candidate)?\.yml$|^scripts\/ci\/full-mode-proof\.(?:test\.)?mjs$|\.md$/.test(file));
+  const code = (file) => readFileSync(path.join(root, file), 'utf8').split('\n').filter((line) => line.includes(lightModeEnv) && !/^\s*#/.test(line));
+  assert.deepEqual(code('.github/workflows/ci.yml').map((line) => line.trim().split(':')[0]), [lightModeEnv]);
+  assert.deepEqual(code('.github/workflows/ci-candidate.yml'), []);
   assert.deepEqual(readers.sort(), [...new Set(lightModeTests.map((item) => item.file))].sort());
 });

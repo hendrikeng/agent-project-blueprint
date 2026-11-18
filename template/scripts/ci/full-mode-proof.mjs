@@ -23,15 +23,21 @@ export const fullModeCommand = '';
 export const fullModeTimeoutMs = 20 * 60 * 1000;
 
 const entities = { lt: '<', gt: '>', quot: '"', apos: "'", amp: '&' };
-const unescape = (value) => value.replace(/&(#x[\da-f]+|#\d+|[a-z]+);/gi, (token, code) =>
-  code[0] !== '#' ? entities[code] ?? token : String.fromCodePoint(Number(code[1].toLowerCase() === 'x' ? `0${code.slice(1)}` : code.slice(1))));
+const unescape = (value) => value.replace(/&(#x[\da-f]+|#\d+|[a-z]+);/gi, (token, code) => {
+  if (code[0] !== '#') return Object.hasOwn(entities, code) ? entities[code] : token;
+  const point = Number(code[1].toLowerCase() === 'x' ? `0${code.slice(1)}` : code.slice(1));
+  return point <= 0x10ffff ? String.fromCodePoint(point) : token;
+});
+
+// Test output in system-out or system-err cannot change the status.
+const statusOf = (body) => /<(?:failure|error)\b/.test(body) ? 'failed' : /<skipped\b/.test(body) ? 'skipped' : 'passed';
 
 export function junitCases(xml) {
-  return [...xml.matchAll(/<testcase\b([^>]*?)(?:\/>|>([\s\S]*?)<\/testcase>)/g)].map(([, attributes, body = '']) => ({
+  return [...xml.matchAll(/<testcase\b([^>]*?)(?:\/>|>([\s\S]*?)<\/testcase>)/g)].map(([, attributes, output = '']) => ({
     name: unescape(attributes.match(/\sname="([^"]*)"/)?.[1] ?? ''),
     // Vitest and pytest name the file in `classname`, node:test in `file`.
     sources: [...attributes.matchAll(/\s(?:file|classname)="([^"]*)"/g)].map((match) => unescape(match[1])),
-    status: /<(?:failure|error)\b/.test(body) ? 'failed' : /<skipped\b/.test(body) ? 'skipped' : 'passed'
+    status: statusOf(output.replace(/<(system-(?:out|err))\b[\s\S]*?<\/\1>/g, ''))
   }));
 }
 
@@ -41,9 +47,9 @@ export function fullModeProblems(xml, tests = lightModeTests) {
   const failed = cases.filter((item) => item.status === 'failed').length;
   if (failed > 0) problems.push(`${failed} test(s) failed`);
   for (const { file, name } of tests) {
-    // Match the file name without its extension: a path, or one part of a dotted pytest classname.
-    const stem = path.basename(file).replace(/\.[^.]+$/, '');
-    const inFile = (source) => path.basename(source).replace(/\.[^.]+$/, '') === stem || (!source.includes('/') && source.split('.').includes(stem));
+    // A relative or absolute path to the file, or a dotted pytest classname of its module.
+    const module = file.replace(/\.py$/, '').replaceAll('/', '.');
+    const inFile = (source) => source === file || source.endsWith(`/${file}`) || source === module || source.startsWith(`${module}.`);
     const found = cases.filter((item) => item.name === name && item.sources.some(inFile));
     if (found.length !== 1 || found[0].status !== 'passed') problems.push(`${file} did not pass "${name}" once`);
   }
