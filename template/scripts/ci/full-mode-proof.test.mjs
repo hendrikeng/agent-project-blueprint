@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { fullModeProblems, lightModeEnv, lightModeTests, runFullMode } from './full-mode-proof.mjs';
@@ -17,7 +17,9 @@ test('a report where each declared test passed once proves the full mode', () =>
   // Names are XML-escaped. node:test names the file in `file`, pytest in a dotted `classname`.
   assert.deepEqual(fullModeProblems(report(testcase('a &lt;b&gt; &amp; &#99;', '', 'classname="x"')), [{ file: 'x', name: 'a <b> & c' }]), []);
   assert.deepEqual(fullModeProblems(report(testcase('t', '', 'classname="t" file="/w/tests/load.test.mjs"')), [{ file: 'tests/load.test.mjs', name: 't' }]), []);
-  assert.deepEqual(fullModeProblems(report(testcase('t', '', 'classname="tests.test_load"')), [{ file: 'tests/test_load.py', name: 't' }]), []);
+  assert.deepEqual(fullModeProblems(report(testcase('t', '', 'classname="tests.test_load.TestLock"')), [{ file: 'tests/test_load.py', name: 't' }]), []);
+  // Two declared files can share a test name.
+  assert.deepEqual(fullModeProblems(report(testcase('t', '', 'classname="a/x.test.ts"'), testcase('t', '', 'classname="a/y.test.ts"')), [{ file: 'a/x.test.ts', name: 't' }, { file: 'a/y.test.ts', name: 't' }]), []);
 });
 
 test('a skipped, failed, missing, or repeated test, or any other failure, proves nothing', () => {
@@ -26,7 +28,8 @@ test('a skipped, failed, missing, or repeated test, or any other failure, proves
     ['failed', report(testcase('holds the lock under load', '<failure message="x"/>'), testcase('reverses each value')), /1 test\(s\) failed/],
     ['error', report(testcase('holds the lock under load'), testcase('reverses each value', '<error/>')), /sweep.test.mjs did not pass/],
     ['missing', report(testcase('holds the lock under load')), /sweep.test.mjs did not pass/],
-    ['same name in another file', report(testcase('holds the lock under load', '', 'classname="tests/other.test.mjs"'), testcase('reverses each value')), /load.test.mjs did not pass/],
+    ['same name in another file', report(testcase('holds the lock under load', '', 'classname="tests/overload.test.mjs"'), testcase('reverses each value')), /load.test.mjs did not pass/],
+    ['same name in another pytest module', report(testcase('holds the lock under load', '', 'classname="tests.test_load_extra"'), testcase('reverses each value')), /load.test.mjs did not pass/],
     ['repeated', report(testcase('holds the lock under load'), testcase('holds the lock under load'), testcase('reverses each value')), /load.test.mjs did not pass/],
     ['other test failed', report(testcase('holds the lock under load'), testcase('reverses each value'), testcase('other', '<failure/>')), /1 test\(s\) failed/],
     ['empty report', '', /did not pass/]
@@ -51,15 +54,15 @@ test('the run removes the light mode and fails without a passing report', () => 
 test('every file that reads the light mode is declared', () => {
   const root = fileURLToPath(new URL('../../', import.meta.url));
   // Tracked and unignored files. Outside Git, for example in a fixture copy, walk the tree.
-  const listed = spawnSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z'], { cwd: root, encoding: 'utf8' });
+  const grep = spawnSync('git', ['grep', '-lzF', '--untracked', '--exclude-standard', lightModeEnv], { cwd: root, encoding: 'utf8' });
   const walk = (directory) => readdirSync(path.join(root, directory), { withFileTypes: true }).flatMap((entry) => {
     const file = path.posix.join(directory, entry.name);
-    if (!entry.isDirectory()) return entry.isFile() ? [file] : [];
-    return ['.git', 'node_modules'].includes(entry.name) ? [] : walk(file);
+    if (entry.isDirectory()) return ['.git', 'node_modules'].includes(entry.name) ? [] : walk(file);
+    return entry.isFile() && readFileSync(path.join(root, file)).includes(lightModeEnv) ? [file] : [];
   });
-  const candidates = listed.status === 0 ? listed.stdout.split('\0').filter(Boolean) : walk('');
-  // Workflows set the variable, CI scripts check it, and docs describe it.
-  const readers = candidates.filter((file) => !/^(?:\.github|docs|scripts\/ci)\/|\.md$/.test(file))
-    .filter((file) => existsSync(path.join(root, file)) && readFileSync(path.join(root, file)).includes(lightModeEnv));
+  // git grep exits 1 when no file matches.
+  const matches = grep.status <= 1 ? grep.stdout.split('\0').filter(Boolean) : walk('');
+  // Workflows set the variable, this script checks it, and docs describe it.
+  const readers = matches.filter((file) => !/^(?:\.github\/workflows|docs)\/|^scripts\/ci\/full-mode-proof\.(?:test\.)?mjs$|\.md$/.test(file));
   assert.deepEqual(readers.sort(), [...new Set(lightModeTests.map((item) => item.file))].sort());
 });

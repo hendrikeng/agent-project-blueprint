@@ -102,7 +102,8 @@ Do not use it to skip a behavior, an assertion, or a security, money, or data-in
 
 To declare a light mode, add each test file and JUnit test name to `lightModeTests` in `scripts/ci/full-mode-proof.mjs`.
 Set `fullModeCommand` to a command that runs only those test files and writes a JUnit report to `$FULL_MODE_REPORT`.
-Its test fails if a file outside `docs/`, `scripts/ci/`, and Markdown reads `CI_LIGHT_MODE` and has no declaration.
+Read `CI_LIGHT_MODE` in the test file itself, not in a shared helper.
+The script test fails if another file reads it and has no declaration. Workflows, `docs/`, and Markdown are exempt.
 If no test declares a light mode, the variable has no effect and the script does nothing.
 
 If the candidate reuses a PR Full run, it runs `full-mode-proof.mjs`, because that run used the light mode.

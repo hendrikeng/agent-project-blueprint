@@ -30,7 +30,7 @@ export function junitCases(xml) {
   return [...xml.matchAll(/<testcase\b([^>]*?)(?:\/>|>([\s\S]*?)<\/testcase>)/g)].map(([, attributes, body = '']) => ({
     name: unescape(attributes.match(/\sname="([^"]*)"/)?.[1] ?? ''),
     // Vitest and pytest name the file in `classname`, node:test in `file`.
-    source: unescape(attributes.match(/\s(?:file|classname)="([^"]*)"/g)?.join(' ') ?? ''),
+    sources: [...attributes.matchAll(/\s(?:file|classname)="([^"]*)"/g)].map((match) => unescape(match[1])),
     status: /<(?:failure|error)\b/.test(body) ? 'failed' : /<skipped\b/.test(body) ? 'skipped' : 'passed'
   }));
 }
@@ -41,9 +41,10 @@ export function fullModeProblems(xml, tests = lightModeTests) {
   const failed = cases.filter((item) => item.status === 'failed').length;
   if (failed > 0) problems.push(`${failed} test(s) failed`);
   for (const { file, name } of tests) {
-    // A pytest classname uses dots, so match the file name without its extension.
+    // Match the file name without its extension: a path, or one part of a dotted pytest classname.
     const stem = path.basename(file).replace(/\.[^.]+$/, '');
-    const found = cases.filter((item) => item.name === name && item.source.includes(stem));
+    const inFile = (source) => path.basename(source).replace(/\.[^.]+$/, '') === stem || (!source.includes('/') && source.split('.').includes(stem));
+    const found = cases.filter((item) => item.name === name && item.sources.some(inFile));
     if (found.length !== 1 || found[0].status !== 'passed') problems.push(`${file} did not pass "${name}" once`);
   }
   return problems;
