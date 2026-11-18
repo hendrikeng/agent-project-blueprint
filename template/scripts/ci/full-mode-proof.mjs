@@ -19,6 +19,9 @@ export const lightModeTests = [];
 // Example: 'npx vitest run --reporter=junit --outputFile="$FULL_MODE_REPORT" tests/load.test.ts'
 export const fullModeCommand = '';
 
+// Stops a hung command before the 40-minute candidate job limit. A stopped command fails the proof.
+export const fullModeTimeoutMs = 20 * 60 * 1000;
+
 const entities = { lt: '<', gt: '>', quot: '"', apos: "'", amp: '&' };
 const unescape = (value) => value.replace(/&(#x[\da-f]+|#\d+|[a-z]+);/gi, (token, code) =>
   code[0] !== '#' ? entities[code] ?? token : String.fromCodePoint(Number(code[1].toLowerCase() === 'x' ? `0${code.slice(1)}` : code.slice(1))));
@@ -26,6 +29,8 @@ const unescape = (value) => value.replace(/&(#x[\da-f]+|#\d+|[a-z]+);/gi, (token
 export function junitCases(xml) {
   return [...xml.matchAll(/<testcase\b([^>]*?)(?:\/>|>([\s\S]*?)<\/testcase>)/g)].map(([, attributes, body = '']) => ({
     name: unescape(attributes.match(/\sname="([^"]*)"/)?.[1] ?? ''),
+    // Vitest and pytest name the file in `classname`, node:test in `file`.
+    source: unescape(attributes.match(/\s(?:file|classname)="([^"]*)"/g)?.join(' ') ?? ''),
     status: /<(?:failure|error)\b/.test(body) ? 'failed' : /<skipped\b/.test(body) ? 'skipped' : 'passed'
   }));
 }
@@ -36,20 +41,22 @@ export function fullModeProblems(xml, tests = lightModeTests) {
   const failed = cases.filter((item) => item.status === 'failed').length;
   if (failed > 0) problems.push(`${failed} test(s) failed`);
   for (const { file, name } of tests) {
-    const found = cases.filter((item) => item.name === name);
+    // A pytest classname uses dots, so match the file name without its extension.
+    const stem = path.basename(file).replace(/\.[^.]+$/, '');
+    const found = cases.filter((item) => item.name === name && item.source.includes(stem));
     if (found.length !== 1 || found[0].status !== 'passed') problems.push(`${file} did not pass "${name}" once`);
   }
   return problems;
 }
 
-export function runFullMode({ tests = lightModeTests, command = fullModeCommand, env = process.env } = {}) {
+export function runFullMode({ tests = lightModeTests, command = fullModeCommand, env = process.env, timeout = fullModeTimeoutMs } = {}) {
   if (tests.length === 0) return [];
   if (!command.trim()) return ['fullModeCommand is empty'];
   const directory = mkdtempSync(path.join(tmpdir(), 'full-mode-'));
   try {
     const report = path.join(directory, 'report.xml');
     const { [lightModeEnv]: _light, ...fullEnv } = env;
-    const result = spawnSync(command, { shell: true, stdio: 'inherit', env: { ...fullEnv, FULL_MODE_REPORT: report } });
+    const result = spawnSync(command, { shell: true, stdio: 'inherit', timeout, env: { ...fullEnv, FULL_MODE_REPORT: report } });
     let xml = null;
     try {
       xml = readFileSync(report, 'utf8');

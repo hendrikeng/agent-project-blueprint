@@ -64,7 +64,7 @@ jobs:
     env:
       # Tests with an expensive full mode can run lighter on PRs outside main. See scripts/ci/full-mode-proof.mjs.
       # PRs into main, merge groups, and ci-candidate.yml keep the full mode.
-      CI_LIGHT_MODE: ${{ github.event_name == 'pull_request' && github.base_ref != 'main' }}
+      CI_LIGHT_MODE: ${{ (github.event_name == 'pull_request' && github.base_ref != 'main') && 'true' || '' }}
     outputs:
       full: ${{ steps.full.outcome }}
     steps:

@@ -1,19 +1,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readdirSync, readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { fullModeProblems, lightModeEnv, lightModeTests, runFullMode } from './full-mode-proof.mjs';
 
 const tests = [{ file: 'tests/load.test.mjs', name: 'holds the lock under load' }, { file: 'tests/sweep.test.mjs', name: 'reverses each value' }];
-const testcase = (name, body = '') => `<testcase name="${name}" classname="t" time="1"${body ? `>${body}</testcase>` : '/>'}`;
+const files = { 'holds the lock under load': 'tests/load.test.mjs', 'reverses each value': 'tests/sweep.test.mjs' };
+const testcase = (name, body = '', source = `classname="${files[name] ?? 'tests/other.test.mjs'}"`) => `<testcase name="${name}" ${source} time="1"${body ? `>${body}</testcase>` : '/>'}`;
 const report = (...cases) => `<?xml version="1.0"?><testsuites><testsuite name="s">${cases.join('')}</testsuite></testsuites>`;
 const passing = report(testcase('holds the lock under load'), testcase('reverses each value'), testcase('other'));
 
 test('a report where each declared test passed once proves the full mode', () => {
   assert.deepEqual(fullModeProblems(passing, tests), []);
-  // Names are XML-escaped in reports.
-  assert.deepEqual(fullModeProblems(report(testcase('a &lt;b&gt; &amp; &#99;')), [{ file: 'x', name: 'a <b> & c' }]), []);
+  // Names are XML-escaped. node:test names the file in `file`, pytest in a dotted `classname`.
+  assert.deepEqual(fullModeProblems(report(testcase('a &lt;b&gt; &amp; &#99;', '', 'classname="x"')), [{ file: 'x', name: 'a <b> & c' }]), []);
+  assert.deepEqual(fullModeProblems(report(testcase('t', '', 'classname="t" file="/w/tests/load.test.mjs"')), [{ file: 'tests/load.test.mjs', name: 't' }]), []);
+  assert.deepEqual(fullModeProblems(report(testcase('t', '', 'classname="tests.test_load"')), [{ file: 'tests/test_load.py', name: 't' }]), []);
 });
 
 test('a skipped, failed, missing, or repeated test, or any other failure, proves nothing', () => {
@@ -22,6 +26,7 @@ test('a skipped, failed, missing, or repeated test, or any other failure, proves
     ['failed', report(testcase('holds the lock under load', '<failure message="x"/>'), testcase('reverses each value')), /1 test\(s\) failed/],
     ['error', report(testcase('holds the lock under load'), testcase('reverses each value', '<error/>')), /sweep.test.mjs did not pass/],
     ['missing', report(testcase('holds the lock under load')), /sweep.test.mjs did not pass/],
+    ['same name in another file', report(testcase('holds the lock under load', '', 'classname="tests/other.test.mjs"'), testcase('reverses each value')), /load.test.mjs did not pass/],
     ['repeated', report(testcase('holds the lock under load'), testcase('holds the lock under load'), testcase('reverses each value')), /load.test.mjs did not pass/],
     ['other test failed', report(testcase('holds the lock under load'), testcase('reverses each value'), testcase('other', '<failure/>')), /1 test\(s\) failed/],
     ['empty report', '', /did not pass/]
@@ -33,28 +38,28 @@ test('a skipped, failed, missing, or repeated test, or any other failure, proves
 test('the run removes the light mode and fails without a passing report', () => {
   const write = (body) => `node -e 'require("fs").writeFileSync(process.env.FULL_MODE_REPORT, ${JSON.stringify(body)}.replace("MODE", process.env.${lightModeEnv} ?? "full"))'`;
   const env = { ...process.env, [lightModeEnv]: 'true' };
-  const declared = [{ file: 'tests/load.test.mjs', name: 'full' }];
+  const declared = [{ file: 'other.test.mjs', name: 'full' }];
   assert.deepEqual(runFullMode({ tests: declared, command: write(report(testcase('MODE'))), env }), []);
   assert.match(runFullMode({ tests: declared, command: 'exit 0', env }).join('\n'), /wrote no report/);
   assert.match(runFullMode({ tests: declared, command: `${write(report(testcase('MODE')))} && exit 3`, env }).join('\n'), /ended with 3/);
   assert.match(runFullMode({ tests: declared, command: '', env }).join('\n'), /fullModeCommand is empty/);
+  assert.match(runFullMode({ tests: declared, command: `${write(report(testcase('MODE')))} && sleep 5`, env, timeout: 300 }).join('\n'), /ended with SIGTERM/);
   assert.deepEqual(runFullMode({ tests: [], command: 'exit 1', env }), []);
 });
 
 // An undeclared reader would let a candidate accept a PR Full run that used only its light mode.
 test('every file that reads the light mode is declared', () => {
   const root = fileURLToPath(new URL('../../', import.meta.url));
-  const readers = [];
-  const walk = (directory) => {
-    for (const entry of readdirSync(path.join(root, directory), { withFileTypes: true })) {
-      const file = path.posix.join(directory, entry.name);
-      if (entry.isDirectory()) {
-        if (!entry.name.startsWith('.') && entry.name !== 'node_modules' && !['docs', 'scripts/ci'].includes(file)) walk(file);
-      } else if (entry.isFile() && !file.endsWith('.md') && readFileSync(path.join(root, file), 'utf8').includes(lightModeEnv)) {
-        readers.push(file);
-      }
-    }
-  };
-  walk('');
+  // Tracked and unignored files. Outside Git, for example in a fixture copy, walk the tree.
+  const listed = spawnSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z'], { cwd: root, encoding: 'utf8' });
+  const walk = (directory) => readdirSync(path.join(root, directory), { withFileTypes: true }).flatMap((entry) => {
+    const file = path.posix.join(directory, entry.name);
+    if (!entry.isDirectory()) return entry.isFile() ? [file] : [];
+    return ['.git', 'node_modules'].includes(entry.name) ? [] : walk(file);
+  });
+  const candidates = listed.status === 0 ? listed.stdout.split('\0').filter(Boolean) : walk('');
+  // Workflows set the variable, CI scripts check it, and docs describe it.
+  const readers = candidates.filter((file) => !/^(?:\.github|docs|scripts\/ci)\/|\.md$/.test(file))
+    .filter((file) => existsSync(path.join(root, file)) && readFileSync(path.join(root, file)).includes(lightModeEnv));
   assert.deepEqual(readers.sort(), [...new Set(lightModeTests.map((item) => item.file))].sort());
 });

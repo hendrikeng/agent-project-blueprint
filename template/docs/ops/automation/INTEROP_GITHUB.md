@@ -91,7 +91,7 @@ Harness tests that read only scripts use `createScriptsRepo()`. A full repositor
 
 A test with an expensive full mode can run a lighter mode on PRs outside `main`.
 Examples are many stress rounds or a long sweep. `ci.yml` sets `CI_LIGHT_MODE=true` in `Fast Gate` only for those PRs.
-PRs into `main`, merge groups, and `ci-candidate.yml` keep the full mode. A test must treat every other value as full mode.
+Other runs get an empty value. PRs into `main`, merge groups, and `ci-candidate.yml` keep the full mode.
 
 Use a light mode only when both conditions are true:
 
@@ -100,14 +100,15 @@ Use a light mode only when both conditions are true:
 
 Do not use it to skip a behavior, an assertion, or a security, money, or data-integrity check. Keep cheap tests in full mode.
 
-To declare a light mode, add each test to `lightModeTests` in `scripts/ci/full-mode-proof.mjs`.
+To declare a light mode, add each test file and JUnit test name to `lightModeTests` in `scripts/ci/full-mode-proof.mjs`.
 Set `fullModeCommand` to a command that runs only those test files and writes a JUnit report to `$FULL_MODE_REPORT`.
 Its test fails if a file outside `docs/`, `scripts/ci/`, and Markdown reads `CI_LIGHT_MODE` and has no declaration.
 If no test declares a light mode, the variable has no effect and the script does nothing.
 
 If the candidate reuses a PR Full run, it runs `full-mode-proof.mjs`, because that run used the light mode.
 The script runs the declared tests without `CI_LIGHT_MODE`.
-The candidate fails unless each declared test passed once and no test failed. A missing report or a timeout also fails it.
+The candidate fails unless each declared test passed once in its file and no test failed.
+A missing report or a timeout after 20 minutes also fails it.
 A candidate without reuse runs `verify:full` in full mode. Each successful candidate artifact therefore proves the full mode.
 
 ### Selected Candidate Proof
