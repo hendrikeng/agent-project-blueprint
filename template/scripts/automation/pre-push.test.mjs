@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 
-import { hookEnv, protectedPushError, pushedBranches } from './pre-push.mjs';
+import { hookEnv, lintBase, protectedPushError, pushedBranches } from './pre-push.mjs';
 import { createScriptsRepo } from './test-helpers.mjs';
 
 test('pre-push reads pushed branches from Git and ignores deletions and tags', () => {
@@ -52,9 +52,11 @@ test('pre-push blocks a failed check on the checked-out feature branch and logs 
   assert.equal(passed.status, 0, passed.stderr);
   // A new branch is checked against the integration branch.
   assert.match(passed.stdout, /LINT 1 origin\/dev\nTYPECHECK --gate typecheck --run GIT_DIR=undefined/);
-  // An existing remote branch is checked from its tip: earlier commits passed their own push.
+  // An existing remote branch is also checked against the integration branch: an earlier push can have skipped the checks.
   const update = hook(`refs/heads/slice/x ${sha} refs/heads/slice/x ${baseSha}\n`);
-  assert.match(update.stdout, new RegExp(`LINT 1 ${baseSha}`));
+  assert.equal(update.status, 0, update.stderr);
+  assert.match(update.stdout, /LINT 1 origin\/dev/);
+  assert.equal(hook(`refs/heads/slice/x ${sha} refs/heads/slice/x abc\n`).status, 1, 'an unparsable branch line fails closed');
   const failed = hook(pushSlice, { FAIL_LINT: '1' });
   assert.equal(failed.status, 1);
   assert.doesNotMatch(failed.stdout, /TYPECHECK/, 'the first failure stops the checks');
@@ -102,4 +104,11 @@ test('pre-push protects dev and main from direct pushes, deletions, and non-fast
   assert.equal(protectedPushError(push('main'), true, forward), '');
   assert.match(protectedPushError(push('main'), true, rewrite), /only a fast-forward/);
   assert.match(protectedPushError(push('dev', { sha: zero, deleted: true }), true, forward), /Deleting dev is not allowed/);
+});
+
+test('pre-push takes the lint base from the remote that receives the push', () => {
+  const refs = new Set(['upstream/HEAD', 'origin/dev']);
+  assert.equal(lintBase('upstream', (ref) => refs.has(ref)), 'upstream/HEAD');
+  assert.equal(lintBase('origin', (ref) => refs.has(ref)), 'origin/dev');
+  assert.equal(lintBase('empty', (ref) => refs.has(ref)), '', 'no remote history: lint-changed checks every tracked file');
 });

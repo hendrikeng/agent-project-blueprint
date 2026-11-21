@@ -1,4 +1,4 @@
 #!/bin/sh
 # Installed by the package manager install (package.json `prepare` sets core.hooksPath to .githooks).
 # Blocks the push when format, lint, or typecheck fails. See docs/ops/automation/LITE_QUICKSTART.md.
-exec node ./scripts/automation/pre-push.mjs
+exec node ./scripts/automation/pre-push.mjs "$@"

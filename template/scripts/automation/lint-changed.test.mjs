@@ -116,14 +116,14 @@ test('lint-changed observes configured tools, can skip untracked files, and runs
   assert.match(noGit.stderr, /Git failed in this repository/);
 });
 
-test('lint-changed from the hook fails without a comparison base instead of checking only the last commit', async (t) => {
+test('lint-changed from the hook checks every tracked file without a comparison base, not only the last commit', async (t) => {
   const rootDir = await fixture(t, { '.oxlintrc.json': '{}\n', ...pkg('oxlint', 'OXLINT', 0) });
   for (const args of [['add', 'changed.js'], ['-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-qm', 'change']]) {
     assert.equal(spawnSync('git', args, { cwd: rootDir }).status, 0);
   }
   const result = run(rootDir, { VERIFY_LINT_BASE: '', GITHUB_BASE_REF: '', LINT_CHANGED_TRACKED_ONLY: '1' });
-  assert.equal(result.status, 1);
-  assert.match(result.stderr, /no comparison base for the pushed commits/);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /OXLINT:--deny-warnings --no-error-on-unmatched-pattern changed\.js/);
   assert.equal(run(rootDir, { VERIFY_LINT_BASE: '', GITHUB_BASE_REF: '' }).status, 0, 'outside the hook HEAD^ stays the fallback');
   assert.equal(run(rootDir, { VERIFY_LINT_BASE: 'HEAD^', GITHUB_BASE_REF: '', LINT_CHANGED_TRACKED_ONLY: '1' }).status, 0, 'an explicit HEAD^ is accepted');
 });

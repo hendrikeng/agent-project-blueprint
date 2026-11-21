@@ -144,33 +144,30 @@ if (tools.length === 0) {
 const hookMode = process.env.LINT_CHANGED_TRACKED_ONLY === "1";
 const baseRef = resolveBaseRef();
 
-// From the pre-push hook, the HEAD^ fallback would check only the last commit of the push. Fail instead of narrowing.
-// pre-push.mjs sets VERIFY_LINT_BASE to the remote branch tip or to the integration branch, so this needs no remote ref.
+// From the pre-push hook, the HEAD^ fallback would check only the last commit of the push.
+// Without a remote base the hook checks every tracked file instead. pre-push.mjs sets VERIFY_LINT_BASE.
 const explicitBase = Boolean(baseRef) && baseRef === process.env.VERIFY_LINT_BASE?.trim();
-if (hookMode && (!baseRef || (baseRef === "HEAD^" && !explicitBase))) {
-  console.error("lint:changed: no comparison base for the pushed commits. Fetch the remote or set VERIFY_LINT_BASE.");
-  process.exit(1);
-}
+const checkAll = hookMode && (!baseRef || (baseRef === "HEAD^" && !explicitBase));
 
-if (!baseRef) {
+if (!baseRef && !checkAll) {
   console.log(
     "lint:changed skipped because no comparison base was available. Set VERIFY_LINT_BASE to enable changed-file linting.",
   );
   process.exit(0);
 }
 
-const comparisonBase =
+const comparisonBase = checkAll ? null :
   baseRef === "HEAD^" ? "HEAD^" : runGit(["merge-base", "HEAD", baseRef], { allowFailure: true });
-if (!comparisonBase) {
+if (!checkAll && !comparisonBase) {
   console.error(`lint:changed: HEAD has no merge base with ${baseRef}. Fetch more history or set VERIFY_LINT_BASE.`);
   process.exit(1);
 }
 
-const changedFilesDiff = runGit(["diff", "--name-only", "--diff-filter=ACMR", comparisonBase], {
-  allowFailure: true,
-});
+const changedFilesDiff = checkAll
+  ? runGit(["ls-files"], { allowFailure: true })
+  : runGit(["diff", "--name-only", "--diff-filter=ACMR", comparisonBase], { allowFailure: true });
 if (hookMode && changedFilesDiff === null) {
-  console.error(`lint:changed: git diff against ${comparisonBase} failed, so no files were checked.`);
+  console.error(`lint:changed: git could not list the changed files, so no files were checked.`);
   process.exit(1);
 }
 const changedFilesOutput = changedFilesDiff ?? "";
