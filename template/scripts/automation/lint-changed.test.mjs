@@ -53,9 +53,9 @@ test('lint-changed runs oxfmt and oxlint on changed files, in an agent-heavy slo
       const result = run(rootDir, { ...extraEnv, PATH: `${heavyDir}${path.delimiter}${process.env.PATH}` });
       assert.equal(result.status, 3, result.stderr);
       // A change to ignored files only must pass, so both tools accept an empty file selection.
-      assert.match(result.stdout, /OXFMT:--check --no-error-on-unmatched-pattern changed\.js/);
-      assert.match(result.stdout, /OXLINT:--deny-warnings --no-error-on-unmatched-pattern changed\.js/);
-      assert.equal(result.stdout.includes(`HEAVY:-- ${process.execPath} node_modules/oxlint/cli.js --deny-warnings --no-error-on-unmatched-pattern changed.js`), wrapped);
+      assert.match(result.stdout, /OXFMT:--check --no-error-on-unmatched-pattern -- changed\.js/);
+      assert.match(result.stdout, /OXLINT:--deny-warnings --no-error-on-unmatched-pattern -- changed\.js/);
+      assert.equal(result.stdout.includes(`HEAVY:-- ${process.execPath} node_modules/oxlint/cli.js --deny-warnings --no-error-on-unmatched-pattern -- changed.js`), wrapped);
     });
   }
 });
@@ -68,8 +68,8 @@ test('lint-changed runs each configured linter, so Vue projects keep ESLint next
   await fs.writeFile(path.join(both, 'Card.vue'), '<template><div /></template>\n');
   const result = run(both);
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /OXLINT:--deny-warnings --no-error-on-unmatched-pattern Card\.vue changed\.js/);
-  assert.match(result.stdout, /ESLINT:--max-warnings 0 --no-warn-ignored Card\.vue changed\.js/);
+  assert.match(result.stdout, /OXLINT:--deny-warnings --no-error-on-unmatched-pattern -- Card\.vue changed\.js/);
+  assert.match(result.stdout, /ESLINT:--max-warnings 0 --no-warn-ignored -- Card\.vue changed\.js/);
 
   const missing = await fixture(t, { '.oxlintrc.json': '{}\n' });
   const failed = run(missing);
@@ -81,7 +81,7 @@ test('lint-changed runs Ruff format and check on changed Python files only', asy
   const rootDir = await fixture(t, { 'pyproject.toml': '[tool.ruff]\nline-length = 100\n', '.venv/bin/ruff': fake('RUFF', 0) });
   const result = run(rootDir);
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /RUFF:format --check changed\.py\nRUFF:check changed\.py/);
+  assert.match(result.stdout, /RUFF:format --check -- changed\.py\nRUFF:check -- changed\.py/);
   assert.doesNotMatch(result.stdout, /changed\.js/);
 });
 
@@ -101,7 +101,7 @@ test('lint-changed observes configured tools, can skip untracked files, and runs
   assert.equal(result.status, 1, 'ruff check still blocks');
   assert.match(result.stdout, /ruff-format found problems\. Observe mode: the check does not fail\./);
   assert.doesNotMatch(result.stdout, /ruff-check found problems/);
-  assert.match(result.stdout, /YARN:oxlint --deny-warnings --no-error-on-unmatched-pattern changed\.js/);
+  assert.match(result.stdout, /YARN:oxlint --deny-warnings --no-error-on-unmatched-pattern -- changed\.js/);
   // changed.js and changed.py are untracked, so the tracked-only run has nothing to check.
   const tracked = run(rootDir, { ...env, LINT_CHANGED_TRACKED_ONLY: '1' });
   assert.equal(tracked.status, 0, tracked.stderr);
@@ -123,7 +123,7 @@ test('lint-changed from the hook checks every tracked file without a comparison 
   }
   const result = run(rootDir, { VERIFY_LINT_BASE: '', GITHUB_BASE_REF: '', LINT_CHANGED_TRACKED_ONLY: '1' });
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /OXLINT:--deny-warnings --no-error-on-unmatched-pattern changed\.js/);
+  assert.match(result.stdout, /OXLINT:--deny-warnings --no-error-on-unmatched-pattern -- changed\.js/);
   assert.equal(run(rootDir, { VERIFY_LINT_BASE: '', GITHUB_BASE_REF: '' }).status, 0, 'outside the hook HEAD^ stays the fallback');
   assert.equal(run(rootDir, { VERIFY_LINT_BASE: 'HEAD^', GITHUB_BASE_REF: '', LINT_CHANGED_TRACKED_ONLY: '1' }).status, 0, 'an explicit HEAD^ is accepted');
 });
@@ -145,4 +145,12 @@ test('observe mode still fails when oxlint or oxfmt reports a broken configurati
   const findings = run(rootDir);
   assert.equal(findings.status, 0, findings.stderr);
   assert.match(findings.stdout, /oxlint found problems\. Observe mode/);
+});
+
+test('lint-changed passes file names after `--`, so a name like an option stays a file', async (t) => {
+  const rootDir = await fixture(t, { 'pyproject.toml': '[tool.ruff]\n', '.venv/bin/ruff': fake('RUFF', 0) });
+  await fs.writeFile(path.join(rootDir, '--exit-zero.py'), 'VALUE = 1\n');
+  const result = run(rootDir);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /RUFF:check -- --exit-zero\.py changed\.py/);
 });

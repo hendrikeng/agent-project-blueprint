@@ -224,8 +224,9 @@ for (const tool of tools) {
     }
   }
   const observe = observed.has(tool.id);
+  // `--` ends the options, so a file named like `--fix.js` stays a file. oxfmt, oxlint, ESLint, and Ruff accept it.
   // Observe mode reads the output: oxlint and oxfmt also exit with 1 when their configuration is broken.
-  const result = spawnHeavy(command, [...prefix, ...tool.args, ...files], observe
+  const result = spawnHeavy(command, [...prefix, ...tool.args, "--", ...files], observe
     ? { stdio: ["inherit", "pipe", "pipe"], encoding: "utf8" }
     : { stdio: "inherit" });
   if (observe) {
