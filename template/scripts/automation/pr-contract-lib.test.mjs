@@ -40,7 +40,7 @@ test('release PR contract validates the title and populated fields without manda
   // Release PRs opened with the older pass claim still validate.
   assert.deepEqual(validatePrContract({ ...input, body: releaseBody.replace('- Required release gates:', '- Required release gates passed:') }), []);
   for (const [field, value] of [['Release ID', '`YYYY.MM.DD.N`'], ['Release branch', '`release/YYYY.MM.DD.N`'],
-    ['Included completed Plan-IDs', ''], ['Rollback or fix-forward plan', '...']]) {
+    ['Included completed Plan-IDs', ''], ['Rollback or fix-forward plan', '']]) {
     const body = releaseBody.replace(new RegExp(`^- ${field}:.*$`, 'm'), `- ${field}: ${value}`);
     assert.match(validatePrContract({ ...input, body }).join('\n'), new RegExp(`'${field}' must contain a non-template value`));
   }

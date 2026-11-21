@@ -245,7 +245,8 @@ export function resolveCloseoutBranch(actualBranch, head, env, event = null, par
   // GitHub computes the test merge asynchronously, so the payload merge SHA can be stale. The
   // checked-out merge commit is still bound to the PR when its second parent is the PR head.
   const boundMerge = event?.pull_request?.merge_commit_sha === head ||
-    (parents.length === 2 && /^[a-f0-9]{40}$/.test(parents[1]) && parents[1] === event?.pull_request?.head?.sha);
+    (parents.length === 2 && /^[a-f0-9]{40}$/.test(parents[1]) && parents[1] === event?.pull_request?.head?.sha &&
+      parents[0] === event?.pull_request?.base?.sha);
   if (env.GITHUB_EVENT_NAME === 'pull_request' && env.GITHUB_REF === `refs/pull/${event?.number}/merge` &&
       boundMerge) {
     branch = event.pull_request.base?.ref;

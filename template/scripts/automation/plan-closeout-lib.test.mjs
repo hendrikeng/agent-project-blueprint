@@ -107,9 +107,11 @@ test('a pull request merge commit binds through its PR head parent when the payl
   const head = 'c'.repeat(40);
   const prHead = 'd'.repeat(40);
   const env = { GITHUB_ACTIONS: 'true', GITHUB_SHA: head, GITHUB_EVENT_NAME: 'pull_request', GITHUB_REF: 'refs/pull/12/merge', PLAN_CLOSEOUT_BRANCH_NAME: 'dev' };
-  const event = { number: 12, pull_request: { merge_commit_sha: 'a'.repeat(40), head: { sha: prHead }, base: { ref: 'dev' } } };
+  const event = { number: 12, pull_request: { merge_commit_sha: 'a'.repeat(40), head: { sha: prHead }, base: { ref: 'dev', sha: 'b'.repeat(40) } } };
   assert.equal(resolveCloseoutBranch('', head, env, event, ['b'.repeat(40), prHead]), 'dev');
   assert.throws(() => resolveCloseoutBranch('', head, env, event, ['b'.repeat(40), 'e'.repeat(40)]), /Detached closeout/);
   assert.throws(() => resolveCloseoutBranch('', head, env, event, [prHead]), /Detached closeout/);
+  // A merge on a newer base would mix other PRs into the closeout diff.
+  assert.throws(() => resolveCloseoutBranch('', head, env, event, ['f'.repeat(40), prHead]), /Detached closeout/);
   assert.throws(() => resolveCloseoutBranch('', head, env, event), /Detached closeout/);
 });

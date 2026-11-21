@@ -85,8 +85,9 @@ function selectTools() {
   if (existsSync("ruff.toml") || existsSync(".ruff.toml") || /^\[tool\.ruff\b/m.test(existsSync("pyproject.toml") ? readFileSync("pyproject.toml", "utf8") : "")) {
     const binary = [path.join(".venv", "bin", "ruff"), path.join(".venv", "Scripts", "ruff.exe")].find((file) => existsSync(file)) ?? "ruff";
     tools.push(
-      { id: "ruff-format", name: "ruff", binary, args: ["format", "--check"], python: true },
-      { id: "ruff-check", name: "ruff", binary, args: ["check"], python: true },
+      // Ruff ignores its exclude settings for named files unless --force-exclude is set.
+      { id: "ruff-format", name: "ruff", binary, args: ["format", "--check", "--force-exclude"], python: true },
+      { id: "ruff-check", name: "ruff", binary, args: ["check", "--force-exclude"], python: true },
     );
   }
   return tools;
@@ -213,11 +214,12 @@ if (changedFiles.length + pythonFiles.length === 0) {
 }
 
 console.log(
-  `lint:changed checking ${changedFiles.length + pythonFiles.length} file(s) against ${baseRef} with ${[...new Set(tools.map((tool) => tool.name))].join(", ")}.`,
+  `lint:changed checking ${checkAll ? "all " : ""}${changedFiles.length + pythonFiles.length} file(s)${checkAll ? "" : ` against ${baseRef}`} with ${[...new Set(tools.map((tool) => tool.name))].join(", ")}.`,
 );
 
 let status = 0;
 const observed = observedTools();
+const FILES_PER_RUN = 200;
 for (const tool of tools) {
   const files = tool.python ? pythonFiles : changedFiles;
   if (files.length === 0) continue;
@@ -235,26 +237,30 @@ for (const tool of tools) {
     }
   }
   const observe = observed.has(tool.id);
-  // `--` ends the options, so a file named like `--fix.js` stays a file. oxfmt, oxlint, ESLint, and Ruff accept it.
-  // Observe mode reads the output: oxlint and oxfmt also exit with 1 when their configuration is broken.
-  const result = spawnHeavy(command, [...prefix, ...tool.args, "--", ...files], observe
-    ? { stdio: ["inherit", "pipe", "pipe"], encoding: "utf8" }
-    : { stdio: "inherit" });
-  if (observe) {
-    process.stdout.write(result.stdout ?? "");
-    process.stderr.write(result.stderr ?? "");
-  }
-  if (result.error) {
-    console.error(`lint:changed: ${tool.name} is configured, but ${command} did not start: ${result.error.message}`);
-    process.exit(1);
-  }
-  if (result.status === 0) continue;
-  // Observe mode accepts only findings: exit code 1 without a configuration error or a missing module in the output.
-  const broken = /Failed to (?:parse|load) (?:oxlint )?configuration|ERR_MODULE_NOT_FOUND|Cannot find module/.test(`${result.stdout}${result.stderr}`);
-  if (observe && result.status === 1 && !broken) console.log(`lint:changed: ${tool.id} found problems. Observe mode: the check does not fail.`);
-  else {
-    if (observe && broken) console.error(`lint:changed: ${tool.id} did not run: configuration error or missing module. Observe mode does not hide this.`);
-    status = result.status ?? 1;
+  // Chunks keep each command line short: all tracked files can exceed the OS argument limit.
+  for (let start = 0; start < files.length; start += FILES_PER_RUN) {
+    // `--` ends the options, so a file named like `--fix.js` stays a file. oxfmt, oxlint, ESLint, and Ruff accept it.
+    // Observe mode reads the output: oxlint and oxfmt also exit with 1 when their configuration is broken.
+    const result = spawnHeavy(command, [...prefix, ...tool.args, "--", ...files.slice(start, start + FILES_PER_RUN)], observe
+      ? { stdio: ["inherit", "pipe", "pipe"], encoding: "utf8", maxBuffer: 256 * 1024 * 1024 }
+      : { stdio: "inherit" });
+    if (observe) {
+      process.stdout.write(result.stdout ?? "");
+      process.stderr.write(result.stderr ?? "");
+    }
+    if (result.error) {
+      console.error(`lint:changed: ${tool.name} is configured, but ${command} did not start: ${result.error.message}`);
+      process.exit(1);
+    }
+    if (result.status === 0) continue;
+    // Observe mode accepts only findings: exit code 1 without a fatal tool message at the start of a line.
+    // Code frames of findings are indented, so source text cannot match.
+    const broken = /^(?:Failed to (?:parse|load) (?:oxlint )?configuration|Error \[ERR_MODULE_NOT_FOUND\]|Error: Cannot find module)/m.test(`${result.stdout}\n${result.stderr}`);
+    if (observe && result.status === 1 && !broken) console.log(`lint:changed: ${tool.id} found problems. Observe mode: the check does not fail.`);
+    else {
+      if (observe && broken) console.error(`lint:changed: ${tool.id} did not run: configuration error or missing module. Observe mode does not hide this.`);
+      status = result.status ?? 1;
+    }
   }
 }
 

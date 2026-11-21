@@ -28,7 +28,7 @@ Implementation PRs target `dev`. Release PRs target `main`, with title `Release 
 Release fixes also return to `dev`.
 
 `pr:verify` requires real values in these release PR body fields: `Release ID`, `Release branch`, `Target branch`, `Included completed Plan-IDs`, and `Rollback or fix-forward plan`.
-`Release ID`, `Release branch`, and `Target branch` must match the PR. A template value such as `YYYY.MM.DD.N` or `...` fails.
+`Release ID`, `Release branch`, and `Target branch` must match the PR. An empty value or a template value such as `YYYY.MM.DD.N` fails.
 If a release has no completed plans, write `none` in `Included completed Plan-IDs`.
 If a project requires more fields, list them in `releasePolicy.requiredPullRequestFields` in `docs/governance/policy-manifest.json`, for example `["Preview URL"]`.
 If a project has no previews, it does not list `Preview URL`, or it writes `not-applicable`.
@@ -54,9 +54,7 @@ A tag records a revision, not deployment success.
 
 Release PR verification reads the exact PR head. Release notes and verification prefer the previous source tag when one exists.
 Older releases without a source tag retain their release-tag boundary.
-Before the first release tag, the default base is `origin/main`.
-If `origin/main` contains the latest release tag and has newer commits, the default base is also `origin/main`. An example is a withdrawn release.
-An explicit `--base` can select another boundary.
+Before the first release tag, the default base is `origin/main`. An explicit `--base` can select another boundary.
 The merge queue verifies its proposed integration against `origin/main`.
 
 For production-targeted PRs, successful current required code checks select Preview only.
@@ -71,6 +69,7 @@ Staging, browser smoke checks, and multi-repository deployment coordination rema
 After tagging, the same workflow creates a GitHub Release for `vYYYY.MM.DD.N`.
 It uses the existing notes generator and links the release PR. No additional release pipeline is required.
 The notes start with the first-parent changes of the range: the subject, the author, and the PR number (`#N`) from a squash subject.
+The notes escape Markdown, HTML, and `@` mentions in subjects and author names.
 Then they list completed slices, evidence, configuration changes, and migration files without unfinished template prompts.
 Validation results remain in the linked evidence. Publication does not prove successful deployment or runtime health.
 

@@ -74,8 +74,10 @@ try {
   const readBaseline = file => gitBytes(['show', `${base}:${file}`], { allowFailure: true });
   const readIndex = file => gitBytes(['show', `:${file}`], { allowFailure: true });
   const readWorktree = file => existsSync(file) ? readFileSync(file) : null;
-  if (['dev', 'main'].includes(targetBranch)) {
-    assertProtectedBranchHasNoActivePlans([...new Set([...worktreeActive, ...indexedActive])], targetBranch,
+  // A stray PLAN_CLOSEOUT_BRANCH_NAME cannot turn off the rules of a checked-out protected branch.
+  const protectedBranch = ['dev', 'main'].includes(targetBranch) ? targetBranch : ['dev', 'main'].includes(branchName) ? branchName : '';
+  if (protectedBranch) {
+    assertProtectedBranchHasNoActivePlans([...new Set([...worktreeActive, ...indexedActive])], protectedBranch,
       { readBaseline, readIndex, readWorktree });
   }
   const indexedChanges = changedFilesFromNameStatus(gitOutput(['diff', '--cached', '--name-status', base, '-z']));

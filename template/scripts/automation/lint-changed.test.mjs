@@ -81,7 +81,7 @@ test('lint-changed runs Ruff format and check on changed Python files only', asy
   const rootDir = await fixture(t, { 'pyproject.toml': '[tool.ruff]\nline-length = 100\n', '.venv/bin/ruff': fake('RUFF', 0) });
   const result = run(rootDir);
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /RUFF:format --check -- changed\.py\nRUFF:check -- changed\.py/);
+  assert.match(result.stdout, /RUFF:format --check --force-exclude -- changed\.py\nRUFF:check --force-exclude -- changed\.py/);
   assert.doesNotMatch(result.stdout, /changed\.js/);
 });
 
@@ -152,7 +152,7 @@ test('lint-changed passes file names after `--`, so a name like an option stays 
   await fs.writeFile(path.join(rootDir, '--exit-zero.py'), 'VALUE = 1\n');
   const result = run(rootDir);
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /RUFF:check -- --exit-zero\.py changed\.py/);
+  assert.match(result.stdout, /RUFF:check --force-exclude -- --exit-zero\.py changed\.py/);
 });
 
 test('lint-changed passes the configured Node options to a Node tool', async (t) => {
@@ -166,4 +166,19 @@ test('lint-changed passes the configured Node options to a Node tool', async (t)
   const result = run(rootDir);
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /ESLINT-NODE:--max-old-space-size=4096/);
+});
+
+test('lint-changed splits long file lists, and a finding that quotes a fatal message stays observed', async (t) => {
+  const rootDir = await fixture(t, {
+    '.oxlintrc.json': '{}\n',
+    'node_modules/oxlint/package.json': JSON.stringify({ name: 'oxlint', bin: { oxlint: 'cli.js' } }),
+    'node_modules/oxlint/cli.js': "const files = process.argv.slice(process.argv.indexOf('--') + 1); console.log('RUN ' + files.length); console.log(\"  1 | throw new Error('Cannot find module ' + name);\"); process.exit(1);\n"
+  });
+  for (let index = 0; index < 250; index += 1) await fs.writeFile(path.join(rootDir, `f${index}.js`), 'export {};\n');
+  await fs.mkdir(path.join(rootDir, 'docs/governance'), { recursive: true });
+  await fs.writeFile(path.join(rootDir, 'docs/governance/policy-manifest.json'), JSON.stringify({ validationPolicy: { changedFileObserve: ['oxlint'] } }));
+  const result = run(rootDir);
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(result.stdout.match(/RUN \d+/g), ['RUN 200', 'RUN 51']);
+  assert.match(result.stdout, /oxlint found problems\. Observe mode/);
 });

@@ -81,6 +81,8 @@ test('verify-fast predicts plan closeout against the configured integration ref 
   await fs.mkdir(path.join(rootDir, 'docs/governance'), { recursive: true });
   await fs.writeFile(path.join(rootDir, 'docs/governance/policy-manifest.json'), JSON.stringify({ validationPolicy: { closeoutPredictionRef: 'origin/main' } }));
   assert.equal(closeout(), `[verify-fast] dry-run: PLAN_CLOSEOUT_BASE_REF=${base} PLAN_CLOSEOUT_BRANCH_NAME=main node ./scripts/automation/check-plan-closeout.mjs`);
+  await fs.writeFile(path.join(rootDir, 'docs/governance/policy-manifest.json'), JSON.stringify({ validationPolicy: { closeoutPredictionRef: 'refs/remotes/origin/main' } }));
+  assert.match(closeout(), /PLAN_CLOSEOUT_BRANCH_NAME=main node/);
   assert.equal(closeout({ VERIFY_FAST_SKIP_CLOSEOUT: '1' }), plain);
   assert.equal(closeout({ GITHUB_ACTIONS: 'true' }), plain);
   git('checkout', '-q', 'main');

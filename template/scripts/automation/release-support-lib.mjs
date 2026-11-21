@@ -132,17 +132,6 @@ function refExists(ref) {
   return Boolean(gitMaybe(["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]));
 }
 
-// A tag behind main, for example after a withdrawn release, would select released history.
-// So main is the base when it contains the tag and moved past it.
-function defaultReleaseBase() {
-  const tag = latestReleaseTag();
-  if (!refExists("origin/main")) return tag;
-  if (!tag) return "origin/main";
-  const mainContainsTag = gitMaybe(["rev-list", "--count", `origin/main..${tag}`]) === "0";
-  const mainIsNewer = gitMaybe(["rev-list", "--count", `${tag}..origin/main`]) !== "0";
-  return mainContainsTag && mainIsNewer ? "origin/main" : tag;
-}
-
 export function releaseSourceBoundary(base, hasRef = refExists) {
   const sourceTag = RELEASE_TAG_REGEX.test(base) ? `source-${base}` : "";
   return sourceTag && hasRef(sourceTag) ? sourceTag : base;
@@ -177,7 +166,7 @@ function parseArgs(argv) {
   }
 
   if (!options.base) {
-    options.base = defaultReleaseBase();
+    options.base = latestReleaseTag() || (refExists("origin/main") ? "origin/main" : "");
   }
 
   return options;
@@ -438,6 +427,11 @@ export function analyzeReleaseRange(argv = process.argv.slice(2)) {
   };
 }
 
+// Commit subjects and author names are contributor text in public notes: no links, images, HTML, or mentions.
+export function markdownText(value) {
+  return String(value).replace(/[\\`*_{}[\]<>()#+!|~]/g, "\\$&").replace(/@/g, "@\u200b");
+}
+
 export function renderReleaseNotes(report) {
   const lines = [];
   lines.push("# Release Notes");
@@ -450,7 +444,7 @@ export function renderReleaseNotes(report) {
   lines.push("");
   if (report.changelog.length > 0) {
     for (const entry of report.changelog) {
-      lines.push(`- ${entry.subject} by ${entry.author}${entry.pr ? ` in #${entry.pr}` : ""}`);
+      lines.push(`- ${markdownText(entry.subject)} by ${markdownText(entry.author)}${entry.pr ? ` in #${entry.pr}` : ""}`);
     }
   } else {
     lines.push("- none identified automatically");
@@ -521,7 +515,7 @@ export function usage(commandName) {
     `Usage: node --run ${commandName} -- [--base <ref>] [--head <ref>] [--allow-any-branch]`,
     "",
     "Defaults:",
-    "- --base uses RELEASE_BASE_REF, then the latest vYYYY.MM.DD.N tag, then origin/main for the first release or when origin/main contains that tag and moved past it.",
+    "- --base uses RELEASE_BASE_REF, then the latest vYYYY.MM.DD.N tag, then origin/main for the first release.",
     "- A release-tag base uses its companion source-vYYYY.MM.DD.N tag when available.",
     "- --head uses RELEASE_HEAD_REF, then HEAD.",
     "- release verification expects the current branch to match release/YYYY.MM.DD.N unless --allow-any-branch is set.",

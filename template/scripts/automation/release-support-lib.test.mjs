@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { metadataValue, releaseSourceBoundary, isValidReleaseVersion } from './release-support-lib.mjs';
+import { metadataValue, releaseSourceBoundary, isValidReleaseVersion, markdownText } from './release-support-lib.mjs';
 import { execFileSync } from 'node:child_process';
 import { writeFile, mkdir, rm, symlink } from 'node:fs/promises';
 import path from 'node:path';
@@ -64,31 +64,6 @@ test('release analysis excludes already-promoted source commits after a squash',
   const missingReport = JSON.parse(missingPair.stdout);
   assert.ok(missingReport.commits.some(commit => commit.hash === source));
   assert.match(missingReport.findings.join('\n'), /previous-release.*no completed plan/);
-});
-
-test('release default base moves to origin/main when main moved past the latest release tag', async (t) => {
-  const rootDir = await createTemplateRepo(t);
-  const git = (...args) => execFileSync('git', args, { cwd: rootDir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
-  const analyze = () => {
-    const result = runNode('--input-type=module', ['-e',
-      'import {analyzeReleaseRange} from "./scripts/automation/release-support-lib.mjs"; console.log(JSON.stringify(analyzeReleaseRange(["--allow-any-branch"])));'
-    ], rootDir, { RELEASE_BASE_REF: '', RELEASE_HEAD_REF: 'HEAD', GITHUB_HEAD_REF: '' });
-    assert.equal(result.status, 0, String(result.stderr));
-    return JSON.parse(result.stdout);
-  };
-  git('tag', 'v2026.07.15.1');
-  git('update-ref', 'refs/remotes/origin/main', 'HEAD');
-  await writeFile(path.join(rootDir, 'withdrawn.md'), 'withdrawn\n');
-  git('add', 'withdrawn.md');
-  git('commit', '-m', 'docs: withdrawn release');
-  assert.equal(analyze().base, 'v2026.07.15.1');
-  git('update-ref', 'refs/remotes/origin/main', 'HEAD');
-  await writeFile(path.join(rootDir, 'next.md'), 'next\n');
-  git('add', 'next.md');
-  git('commit', '-m', 'docs: next');
-  const report = analyze();
-  assert.equal(report.base, 'origin/main');
-  assert.deepEqual(report.files, ['next.md']);
 });
 
 test('a plan-free release accepts mapped small fixes while unmapped code still blocks', async (t) => {
@@ -240,4 +215,9 @@ test('release changelog lists first-parent commits of the range with their PR nu
 
 test('release metadata parser remains compatible with unbulleted metadata', () => {
   assert.equal(metadataValue('Plan-ID: legacy-plan\n', 'Plan-ID'), 'legacy-plan');
+});
+
+test('release notes escape contributor text', () => {
+  assert.equal(markdownText('Fix [login](https://evil.example) @org/team <img src=x>'),
+    'Fix \\[login\\]\\(https://evil.example\\) @\u200borg/team \\<img src=x\\>');
 });

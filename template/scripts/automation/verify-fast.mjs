@@ -89,6 +89,12 @@ function closeoutPredictionRef() {
   }
 }
 
+function closeoutBranch(ref) {
+  if (ref.startsWith('refs/remotes/')) return ref.split('/').slice(3).join('/');
+  if (ref.startsWith('refs/heads/')) return ref.slice('refs/heads/'.length);
+  return ref.includes('/') ? ref.slice(ref.indexOf('/') + 1) : ref;
+}
+
 function closeoutCommand() {
   // CI has its own verified event context. An explicit baseline wins.
   const ref = closeoutPredictionRef();
@@ -109,7 +115,7 @@ function closeoutCommand() {
     return CLOSEOUT_COMMAND;
   }
   // The branch part of the ref, for example dev in origin/dev: the closeout check applies its protected-branch rules.
-  commandEnv.set(CLOSEOUT_COMMAND, { PLAN_CLOSEOUT_BASE_REF: baseSha, PLAN_CLOSEOUT_BRANCH_NAME: ref.replace(/^[^/]+\//, '') });
+  commandEnv.set(CLOSEOUT_COMMAND, { PLAN_CLOSEOUT_BASE_REF: baseSha, PLAN_CLOSEOUT_BRANCH_NAME: closeoutBranch(ref) });
   return CLOSEOUT_COMMAND;
 }
 

@@ -77,7 +77,7 @@ function fieldValue(body, label) {
 
 function requireField(findings, body, label, expected = "") {
   const value = fieldValue(body, label);
-  if (!value || value.includes("...") || value.includes("YYYY.MM.DD.N")) {
+  if (!value || value.includes("YYYY.MM.DD.N")) {
     findings.push(`release PR body field '${label}' must contain a non-template value.`);
   } else if (expected && value !== expected) {
     findings.push(`release PR body field '${label}' must be '${expected}'; got '${value}'.`);
