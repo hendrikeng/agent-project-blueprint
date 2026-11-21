@@ -36,6 +36,16 @@ function readPackageJson() {
   }
 }
 
+function packageBin(name) {
+  try {
+    const { bin } = JSON.parse(readFileSync(path.join("node_modules", name, "package.json"), "utf8"));
+    const file = typeof bin === "string" ? bin : bin?.[name];
+    return file ? path.join("node_modules", name, file) : null;
+  } catch {
+    return null;
+  }
+}
+
 function dependsOn(packageJson, name) {
   return Boolean(
     packageJson.dependencies?.[name] ||
@@ -116,6 +126,11 @@ function resolveBaseRef() {
 }
 
 if (!isGitRepository()) {
+  // From the pre-push hook a Git failure must not pass the push without a check.
+  if (process.env.LINT_CHANGED_TRACKED_ONLY === "1") {
+    console.error("lint:changed: Git failed in this repository, so no files were checked.");
+    process.exit(1);
+  }
   console.log("lint:changed skipped because this directory is not a git repository.");
   process.exit(0);
 }
@@ -181,16 +196,18 @@ const observed = observedTools();
 for (const tool of tools) {
   const files = tool.python ? pythonFiles : changedFiles;
   if (files.length === 0) continue;
-  // The local binary starts faster than a package-manager runner and works with every package manager.
-  // Yarn Plug'n'Play has no node_modules/.bin, so Yarn runs the tool. No shell: file names stay arguments.
-  let command = tool.binary ?? path.join("node_modules", ".bin", tool.name);
+  // Node runs the package bin directly: faster than a package-manager runner, the same on every OS, and
+  // without a shell, so file names stay arguments. Yarn Plug'n'Play has no node_modules, so Yarn runs the tool.
+  let command = tool.binary;
   let prefix = [];
-  if (!tool.binary && !existsSync(command)) {
-    if (!existsSync(".pnp.cjs")) {
-      console.error(`lint:changed: ${tool.name} is configured, but ${command} is missing. Install the dependencies.`);
+  if (!command) {
+    const bin = packageBin(tool.name);
+    if (bin) [command, prefix] = [process.execPath, [bin]];
+    else if (existsSync(".pnp.cjs")) [command, prefix] = ["yarn", [tool.name]];
+    else {
+      console.error(`lint:changed: ${tool.name} is configured, but node_modules/${tool.name} is missing. Install the dependencies.`);
       process.exit(1);
     }
-    [command, prefix] = ["yarn", [tool.name]];
   }
   const result = spawnHeavy(command, [...prefix, ...tool.args, ...files], { stdio: "inherit" });
   if (result.error) {
@@ -198,7 +215,8 @@ for (const tool of tools) {
     process.exit(1);
   }
   if (result.status === 0) continue;
-  if (observed.has(tool.id)) console.log(`lint:changed: ${tool.id} found problems. Observe mode: the check does not fail.`);
+  // Observe mode accepts only the findings exit code 1. A crash or a configuration error still fails.
+  if (observed.has(tool.id) && result.status === 1) console.log(`lint:changed: ${tool.id} found problems. Observe mode: the check does not fail.`);
   else status = result.status ?? 1;
 }
 

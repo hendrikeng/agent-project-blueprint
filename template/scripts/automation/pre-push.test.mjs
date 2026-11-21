@@ -17,7 +17,7 @@ test('pre-push reads pushed branches from Git and ignores deletions and tags', (
     `refs/heads/gone ${zero} refs/heads/gone ${sha}`,
     `refs/tags/v1 ${sha} refs/tags/v1 ${zero}`,
     ''
-  ].join('\n')), [{ branch: 'slice/x', sha }, { branch: 'fix/y', sha }]);
+  ].join('\n')), [{ branch: 'slice/x', sha, exists: false }, { branch: 'fix/y', sha, exists: false }]);
 });
 
 test('pre-push blocks a failed check on the checked-out feature branch and logs each push', async (t) => {
@@ -54,17 +54,22 @@ test('pre-push blocks a failed check on the checked-out feature branch and logs 
   git('checkout', '-q', 'dev');
   assert.equal(hook(pushSlice, { FAIL_LINT: '1' }).status, 0, 'the checks read the working tree, not the pushed commit');
   const devSha = git('rev-parse', 'HEAD').stdout.trim();
-  const direct = hook(`refs/heads/dev ${devSha} refs/heads/dev ${'0'.repeat(40)}\n`);
+  // The first push creates dev. A push to an existing dev is refused unless the logged escape is set.
+  assert.equal(hook(`refs/heads/dev ${devSha} refs/heads/dev ${'0'.repeat(40)}\n`).status, 0);
+  const existing = `refs/heads/dev ${devSha} refs/heads/dev ${'b'.repeat(40)}\n`;
+  const direct = hook(existing);
   assert.equal(direct.status, 1);
   assert.match(direct.stderr, /Direct pushes to dev are not allowed/);
+  assert.equal(hook(existing, { ALLOW_PROTECTED_PUSH: '1' }).status, 0);
   const lines = (await fs.readFile(logPath, 'utf8')).trim().split('\n').map((line) => line.split('\t'));
   assert.deepEqual(lines.map((fields) => fields.slice(1, 4)), [
     [sha, 'slice/x', 'pass'],
     [sha, 'slice/x', 'fail: ./scripts/automation/lint-changed.mjs'],
     [sha, 'slice/x', 'skipped'],
     [sha, 'slice/x', 'skipped: uncommitted changes'],
-    [sha, 'slice/x', 'skipped: not checked out']
-  ], 'a refused dev push writes no line');
+    [sha, 'slice/x', 'skipped: not checked out'],
+    [devSha, 'dev', 'allowed: ALLOW_PROTECTED_PUSH']
+  ], 'dev pushes run no checks, and only the escape writes a line');
 });
 
 test('pre-push checks do not inherit Git variables of the hook, also not git -c settings', () => {

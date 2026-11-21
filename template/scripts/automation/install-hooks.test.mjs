@@ -30,8 +30,13 @@ test('install-hooks sets the hooks path only when no other hooks are active', as
   await fs.mkdir(path.join(root, 'apps'));
   assert.equal(install(path.join(root, 'apps')).status, 0);
   assert.equal(git('config', 'core.hooksPath'), '', 'a package below the repository root changes nothing');
-  assert.equal(install(root, { CI: 'true' }).status, 0);
+  const ci = install(root, { CI: 'true' });
+  assert.equal(ci.status, 0);
+  assert.match(ci.stdout, /CI is set: the Git hooks stay unchanged/);
   assert.equal(git('config', 'core.hooksPath'), '', 'CI keeps its hooks, so a bot push does not run the local hook');
+  assert.equal(install(root, { CI: 'false' }).status, 0);
+  assert.equal(git('config', 'core.hooksPath'), '.githooks', 'CI=false is not CI');
+  git('config', '--unset', 'core.hooksPath');
   assert.equal(install().status, 0);
   assert.equal(git('config', 'core.hooksPath'), '.githooks');
 });

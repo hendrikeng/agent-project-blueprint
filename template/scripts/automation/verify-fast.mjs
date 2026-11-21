@@ -154,8 +154,8 @@ async function main() {
     const execution = runCommand(command, dryRun);
     if (execution.status !== 0) {
       if (commandEnv.has(command)) {
-        console.error(`[verify-fast] This branch would fail plan closeout after it merges into ${closeoutPredictionRef()}.`);
-        console.error('[verify-fast] Close out the plan in the same PR: move it to docs/exec-plans/completed/ with its evidence index.');
+        console.error(`[verify-fast] The closeout check failed against the merge base with ${closeoutPredictionRef()}. Read its error above.`);
+        console.error('[verify-fast] If a plan is not closed out, close it in the same PR: move it to docs/exec-plans/completed/ with its evidence index.');
         console.error('[verify-fast] For mid-iteration work only, run again with VERIFY_FAST_SKIP_CLOSEOUT=1.');
       }
       process.exit(execution.status);

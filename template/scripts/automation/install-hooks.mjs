@@ -15,14 +15,15 @@ const hooksDir = top && path.resolve(top, git('rev-parse', '--git-path', 'hooks'
 const hooksPath = git('config', 'core.hooksPath');
 let reason = '';
 // CI checkouts keep their Git hooks: a later bot push must not run or refuse through the local hook.
-if (process.env.CI) reason = 'CI is set';
+if (process.env.CI && !['false', '0'].includes(process.env.CI)) reason = 'CI';
 // The hook runs ./scripts/automation/pre-push.mjs from the repository root, so the package must be that root.
 else if (!top || fs.realpathSync(top) !== fs.realpathSync(process.cwd())) reason = 'the package is not at the repository root';
 else if (!fs.existsSync(path.join(top, '.githooks'))) reason = 'no .githooks directory';
 else if (hooksPath === '.githooks') reason = 'already installed';
 else if (hooksPath) reason = `core.hooksPath is already ${hooksPath}`;
 else if (fs.existsSync(hooksDir) && fs.readdirSync(hooksDir).some((name) => !name.endsWith('.sample'))) reason = `${hooksDir} has active hooks`;
-if (reason === 'already installed') console.log('[install-hooks] core.hooksPath is already .githooks.');
+if (reason === 'CI') console.log('[install-hooks] CI is set: the Git hooks stay unchanged.');
+else if (reason === 'already installed') console.log('[install-hooks] core.hooksPath is already .githooks.');
 else if (reason) console.log(`[install-hooks] kept the current Git hooks: ${reason}. Call scripts/automation/pre-push.mjs from your pre-push hook.`);
 else {
   git('config', 'core.hooksPath', '.githooks');

@@ -144,7 +144,8 @@ jobs:
           - gate: build
             budget: 5
     steps:
-      # Blobless clone: these gates read no history contents. Do not use a shallow clone.
+      # Blobless clone: these gates must not read old file contents, for example through `git diff`.
+      # A gate that needs them must run in a job with a full clone. Do not use a shallow clone.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0

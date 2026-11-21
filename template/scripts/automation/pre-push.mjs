@@ -28,7 +28,7 @@ export function pushedBranches(stdin) {
   // The remote ref names the branch: the local side can be `HEAD` or a SHA.
   return stdin.split('\n').map((line) => line.trim().split(/\s+/))
     .filter(([, sha, ref]) => ref?.startsWith('refs/heads/') && /^[0-9a-f]{40,64}$/.test(sha ?? '') && !/^0+$/.test(sha))
-    .map(([, sha, ref]) => ({ branch: ref.slice('refs/heads/'.length), sha }));
+    .map(([, sha, ref, remoteSha]) => ({ branch: ref.slice('refs/heads/'.length), sha, exists: /^[0-9a-f]+$/.test(remoteSha ?? '') && !/^0+$/.test(remoteSha) }));
 }
 
 // Returns true when the push can continue.
@@ -58,8 +58,11 @@ function main() {
   const logPath = path.resolve(git('rev-parse', '--git-dir'), 'pre-push.log');
   const head = git('rev-parse', 'HEAD');
   const pushed = pushedBranches(fs.readFileSync(0, 'utf8'));
-  const protectedPush = pushed.find(({ branch }) => protectedBranches.includes(branch));
-  if (protectedPush) {
+  // The first push creates the branch. ALLOW_PROTECTED_PUSH=1 is the logged escape for a fully gated fast-forward.
+  const protectedPush = pushed.find(({ branch, exists }) => exists && protectedBranches.includes(branch));
+  if (protectedPush && process.env.ALLOW_PROTECTED_PUSH === '1') {
+    fs.appendFileSync(logPath, `${new Date().toISOString()}\t${protectedPush.sha}\t${protectedPush.branch}\tallowed: ALLOW_PROTECTED_PUSH\t0.0\n`);
+  } else if (protectedPush) {
     console.error(`[pre-push] Direct pushes to ${protectedPush.branch} are not allowed. Open a pull request.`);
     return false;
   }

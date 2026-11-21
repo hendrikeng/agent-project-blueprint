@@ -14,7 +14,10 @@ async function fixture(t, files) {
   const binDir = path.join(rootDir, 'node_modules', '.bin');
   await fs.mkdir(binDir, { recursive: true });
   await fs.mkdir(path.join(rootDir, '.venv', 'bin'), { recursive: true });
-  for (const [name, content] of Object.entries(files)) await fs.writeFile(path.join(rootDir, name), content, { mode: /^(?:node_modules|\.venv)\//.test(name) ? 0o755 : 0o644 });
+  for (const [name, content] of Object.entries(files)) {
+    await fs.mkdir(path.dirname(path.join(rootDir, name)), { recursive: true });
+    await fs.writeFile(path.join(rootDir, name), content, { mode: /^(?:node_modules|\.venv)\//.test(name) ? 0o755 : 0o644 });
+  }
   await fs.writeFile(path.join(rootDir, '.gitignore'), 'node_modules/\n.heavy/\n.venv/\n');
   for (const args of [['init', '-q'], ['add', '.'], ['-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-qm', 'seed']]) {
     assert.equal(spawnSync('git', args, { cwd: rootDir }).status, 0);
@@ -26,6 +29,11 @@ async function fixture(t, files) {
 
 // Fakes record their argv and exit with the given status.
 const fake = (name, status) => `#!/bin/sh\necho "${name}:$*"\nexit ${status}\n`;
+// A Node package whose bin records its argv. Node runs it directly, without node_modules/.bin.
+const pkg = (name, label, status) => ({
+  [`node_modules/${name}/package.json`]: JSON.stringify({ name, bin: { [name]: 'cli.js' } }),
+  [`node_modules/${name}/cli.js`]: `console.log('${label}:' + process.argv.slice(2).join(' ')); process.exit(${status});\n`
+});
 const run = (rootDir, env = {}) => spawnSync('node', [scriptPath], {
   cwd: rootDir, encoding: 'utf8', env: { ...process.env, CI: '', AGENT_HEAVY: '0', VERIFY_LINT_BASE: 'HEAD', ...env }
 });
@@ -33,8 +41,8 @@ const run = (rootDir, env = {}) => spawnSync('node', [scriptPath], {
 test('lint-changed runs oxfmt and oxlint on changed files, in an agent-heavy slot only when local', async (t) => {
   const rootDir = await fixture(t, {
     'package.json': JSON.stringify({ devDependencies: { oxfmt: '0', oxlint: '1' } }),
-    'node_modules/.bin/oxfmt': fake('OXFMT', 0),
-    'node_modules/.bin/oxlint': fake('OXLINT', 3)
+    ...pkg('oxfmt', 'OXFMT', 0),
+    ...pkg('oxlint', 'OXLINT', 3)
   });
   const heavyDir = path.join(rootDir, '.heavy');
   await fs.mkdir(heavyDir);
@@ -47,7 +55,7 @@ test('lint-changed runs oxfmt and oxlint on changed files, in an agent-heavy slo
       // A change to ignored files only must pass, so both tools accept an empty file selection.
       assert.match(result.stdout, /OXFMT:--check --no-error-on-unmatched-pattern changed\.js/);
       assert.match(result.stdout, /OXLINT:--deny-warnings --no-error-on-unmatched-pattern changed\.js/);
-      assert.equal(result.stdout.includes('HEAVY:-- node_modules/.bin/oxlint --deny-warnings --no-error-on-unmatched-pattern changed.js'), wrapped);
+      assert.equal(result.stdout.includes(`HEAVY:-- ${process.execPath} node_modules/oxlint/cli.js --deny-warnings --no-error-on-unmatched-pattern changed.js`), wrapped);
     });
   }
 });
@@ -55,7 +63,7 @@ test('lint-changed runs oxfmt and oxlint on changed files, in an agent-heavy slo
 test('lint-changed runs each configured linter, so Vue projects keep ESLint next to oxlint, and fails on a missing binary', async (t) => {
   const both = await fixture(t, {
     'eslint.config.js': 'export default [];\n', '.oxlintrc.json': '{}\n',
-    'node_modules/.bin/eslint': fake('ESLINT', 0), 'node_modules/.bin/oxlint': fake('OXLINT', 0)
+    ...pkg('eslint', 'ESLINT', 0), ...pkg('oxlint', 'OXLINT', 0)
   });
   await fs.writeFile(path.join(both, 'Card.vue'), '<template><div /></template>\n');
   const result = run(both);
@@ -66,7 +74,7 @@ test('lint-changed runs each configured linter, so Vue projects keep ESLint next
   const missing = await fixture(t, { '.oxlintrc.json': '{}\n' });
   const failed = run(missing);
   assert.equal(failed.status, 1);
-  assert.match(failed.stderr, /oxlint is configured, but node_modules\/\.bin\/oxlint is missing/);
+  assert.match(failed.stderr, /oxlint is configured, but node_modules\/oxlint is missing/);
 });
 
 test('lint-changed runs Ruff format and check on changed Python files only', async (t) => {
@@ -98,4 +106,12 @@ test('lint-changed observes configured tools, can skip untracked files, and runs
   const tracked = run(rootDir, { ...env, LINT_CHANGED_TRACKED_ONLY: '1' });
   assert.equal(tracked.status, 0, tracked.stderr);
   assert.match(tracked.stdout, /found no lintable files/);
+  // Observe mode accepts only findings (exit code 1), not a crash or a configuration error.
+  await fs.writeFile(path.join(rootDir, '.venv/bin/ruff'), fake('RUFF', 2), { mode: 0o755 });
+  assert.equal(run(rootDir, env).status, 2);
+  // From the hook, a Git failure fails instead of passing without a check.
+  await fs.rename(path.join(rootDir, '.git'), path.join(rootDir, 'git-moved'));
+  const noGit = run(rootDir, { ...env, LINT_CHANGED_TRACKED_ONLY: '1', GIT_CEILING_DIRECTORIES: path.dirname(rootDir) });
+  assert.equal(noGit.status, 1);
+  assert.match(noGit.stderr, /Git failed in this repository/);
 });
