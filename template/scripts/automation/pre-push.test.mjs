@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 
-import { hookEnv, lintBase, protectedPushError, pushedBranches } from './pre-push.mjs';
+import { checks, hookEnv, lintBase, protectedPushError, pushChecks, pushedBranches } from './pre-push.mjs';
 import { createScriptsRepo } from './test-helpers.mjs';
 
 test('pre-push reads pushed branches from Git and ignores deletions and tags', () => {
@@ -123,4 +123,12 @@ test('pre-push takes the lint base from the remote that receives the push', () =
   assert.equal(lintBase('upstream', (ref) => refs.has(ref)), 'upstream/HEAD');
   assert.equal(lintBase('origin', (ref) => refs.has(ref)), 'origin/dev');
   assert.equal(lintBase('empty', (ref) => refs.has(ref)), '', 'no remote history: lint-changed checks every tracked file');
+});
+
+test('pre-push fast mode keeps only the changed-file check for a feature branch, never for a gated push', () => {
+  assert.deepEqual(pushChecks({ allowed: false, wholeProgram: true }), { fast: false, checks });
+  const fast = pushChecks({ allowed: false, wholeProgram: false });
+  assert.equal(fast.fast, true);
+  assert.deepEqual(fast.checks.map(([, script]) => script), ['./scripts/automation/lint-changed.mjs']);
+  assert.deepEqual(pushChecks({ allowed: true, wholeProgram: false }), { fast: false, checks });
 });

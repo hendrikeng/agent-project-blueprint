@@ -229,6 +229,8 @@ function runGate(gate, { dryRun }, command = String(gate.command ?? '').trim()) 
 }
 
 async function main() {
+  // Only the pre-push hook sets PRE_PUSH_FAST, and it runs no project gate in fast mode. A leaked value must not drop rules.
+  delete process.env.PRE_PUSH_FAST;
   const options = parseArgs(process.argv.slice(2));
   if (options.help) {
     console.log(usage());

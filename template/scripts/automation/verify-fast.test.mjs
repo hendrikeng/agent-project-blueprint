@@ -98,3 +98,31 @@ test('verify-fast predicts plan closeout against the configured integration ref 
   git('update-ref', '-d', 'refs/remotes/origin/main');
   assert.equal(closeout(), plain, 'a missing ref keeps the iteration mode');
 });
+
+test('verify-fast skips lint:changed in CI only on opt-in and when the same run runs the required lint gate', async (t) => {
+  const rootDir = await createScriptsRepo(t);
+  const script = path.join(rootDir, 'scripts/automation/verify-fast.mjs');
+  await fs.mkdir(path.join(rootDir, 'docs/governance'), { recursive: true });
+  const gates = (status) => fs.writeFile(path.join(rootDir, 'docs/governance/project-gates.json'), JSON.stringify({
+    gates: [{ id: 'lint', profile: 'fast', status, command: status === 'required' ? 'node lint.mjs' : '' }]
+  }));
+  const output = (scope, env) => String(runNode(script, ['--dry-run', '--scope', scope], rootDir, { GITHUB_ACTIONS: '', PROJECT_GATES_IN_JOBS: '', ...env }).stdout);
+  await gates('required');
+  assert.match(output('product', { GITHUB_ACTIONS: 'true' }), /lint-changed\.mjs/, 'without the opt-in, lint:changed stays');
+  await fs.writeFile(path.join(rootDir, 'docs/governance/policy-manifest.json'), JSON.stringify({ validationPolicy: { ciLintGateCoversChangedFiles: true } }));
+  assert.match(output('product', {}), /lint-changed\.mjs/, 'locally lint:changed stays');
+  const ci = output('product', { GITHUB_ACTIONS: 'true' });
+  assert.doesNotMatch(ci, /dry-run: node \.\/scripts\/automation\/lint-changed\.mjs/);
+  assert.match(ci, /lint:changed skipped in CI: ciLintGateCoversChangedFiles is set/);
+  assert.match(output('docs', { GITHUB_ACTIONS: 'true' }), /lint-changed\.mjs/, 'the docs scope runs no project gates');
+  assert.match(output('product', { GITHUB_ACTIONS: 'true', PROJECT_GATES_IN_JOBS: 'lint' }), /lint-changed\.mjs/, 'the lint gate runs in another job');
+  await gates('deferred');
+  assert.match(output('product', { GITHUB_ACTIONS: 'true' }), /lint-changed\.mjs/, 'no required lint gate');
+  // Built at runtime: template smoke replaces placeholder tokens in files.
+  const placeholder = (name) => `{${`{${name}}`}}`;
+  await fs.writeFile(path.join(rootDir, 'docs/governance/project-gates.json'), JSON.stringify({ gates: [{ id: 'lint', profile: 'fast', status: 'required', command: placeholder('PROJECT_LINT_COMMAND') }] }));
+  assert.match(output('product', { GITHUB_ACTIONS: 'true' }), /lint-changed\.mjs/, 'a placeholder command does not run');
+  await gates('required');
+  await fs.writeFile(path.join(rootDir, 'AGENTS.md'), `Owner: ${placeholder('DOC_OWNER')}\nLast Updated: ${placeholder('LAST_UPDATED_ISO_DATE')}\n`);
+  assert.match(output('product', { GITHUB_ACTIONS: 'true' }), /lint-changed\.mjs/, 'raw template mode runs no project gate');
+});

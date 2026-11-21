@@ -80,13 +80,28 @@ function resolvedPlanMetadataCommand() {
 
 // Optional: validationPolicy.closeoutPredictionRef in docs/governance/policy-manifest.json, for example "origin/dev".
 // Then a local run checks plan closeout against the merge base with that ref, as CI does for a PR into it.
-function closeoutPredictionRef() {
+// The same test as check-project-gates.mjs: in raw template mode, no project gate runs.
+function templateMode() {
   try {
-    const ref = JSON.parse(readFileSync('docs/governance/policy-manifest.json', 'utf8')).validationPolicy?.closeoutPredictionRef;
-    return typeof ref === 'string' ? ref.trim() : '';
+    const raw = readFileSync('AGENTS.md', 'utf8');
+    const placeholder = (field) => /^\{\{[A-Z0-9_]+\}\}$/.test(raw.match(new RegExp(`^${field}:\\s+(.+)$`, 'm'))?.[1]?.trim() ?? '');
+    return placeholder('Owner') && placeholder('Last Updated');
   } catch {
-    return '';
+    return false;
   }
+}
+
+function validationPolicy() {
+  try {
+    return JSON.parse(readFileSync('docs/governance/policy-manifest.json', 'utf8')).validationPolicy ?? {};
+  } catch {
+    return {};
+  }
+}
+
+function closeoutPredictionRef() {
+  const ref = validationPolicy().closeoutPredictionRef;
+  return typeof ref === 'string' ? ref.trim() : '';
 }
 
 // The branch part of the ref: strip refs/heads/, refs/remotes/<remote>/, or <remote>/ only when it is a
@@ -122,10 +137,31 @@ function closeoutCommand() {
   return CLOSEOUT_COMMAND;
 }
 
+// Opt-in: with validationPolicy.ciLintGateCoversChangedFiles true, a CI run that also runs the required lint gate of the
+// fast profile skips lint:changed. The project states that its lint gate checks every file, also the formatting.
+// Locally, lint:changed stays, because it is the fast check.
+function lintChangedCommand(scope) {
+  const command = 'node ./scripts/automation/lint-changed.mjs';
+  if (process.env.GITHUB_ACTIONS !== 'true' || !['broad', 'product'].includes(scope)) return [command];
+  if (validationPolicy().ciLintGateCoversChangedFiles !== true || templateMode()) return [command];
+  const inJobs = String(process.env.PROJECT_GATES_IN_JOBS ?? '').split(',').map((id) => id.trim());
+  if (inJobs.includes('lint')) return [command];
+  try {
+    const gates = JSON.parse(readFileSync('docs/governance/project-gates.json', 'utf8')).gates ?? [];
+    const lint = gates.find((gate) => gate.id === 'lint' && gate.profile === 'fast');
+    // A placeholder command does not run (raw template mode), so it cannot replace lint:changed.
+    if (lint?.status !== 'required' || !String(lint.command ?? '').trim() || /\{\{[A-Z0-9_]+\}\}/.test(lint.command)) return [command];
+  } catch {
+    return [command];
+  }
+  console.log('[verify-fast] lint:changed skipped in CI: ciLintGateCoversChangedFiles is set, and the required lint gate runs here.');
+  return [];
+}
+
 function buildCommandSet(changedFiles, scope) {
   const commands = [
     'node ./scripts/automation/compile-runtime-context.mjs --check',
-    'node ./scripts/automation/lint-changed.mjs',
+    ...lintChangedCommand(scope),
     'node ./scripts/automation/check-path-policy.mjs',
     'node ./scripts/docs/repair-plan-references.mjs --check',
     'node ./scripts/docs/check-governance.mjs',
@@ -152,6 +188,8 @@ function buildCommandSet(changedFiles, scope) {
 }
 
 async function main() {
+  // Only the pre-push hook sets PRE_PUSH_FAST. A leaked value must not drop type-aware lint rules here.
+  delete process.env.PRE_PUSH_FAST;
   const options = parseArgs(process.argv.slice(2));
   const dryRun = asBoolean(options['dry-run'], false);
   const scope = options.scope ?? 'broad';

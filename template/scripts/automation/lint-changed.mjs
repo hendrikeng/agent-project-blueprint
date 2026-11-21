@@ -148,6 +148,8 @@ if (tools.length === 0) {
 }
 
 const hookMode = process.env.LINT_CHANGED_TRACKED_ONLY === "1";
+// PRE_PUSH_FAST lets the ESLint configuration drop type-aware rules. Only the pre-push hook (hook mode) can set it.
+if (!hookMode) delete process.env.PRE_PUSH_FAST;
 const baseRef = resolveBaseRef();
 
 // From the pre-push hook, the HEAD^ fallback would check only the last commit of the push.

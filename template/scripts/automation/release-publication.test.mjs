@@ -117,7 +117,7 @@ test('publication uses explicit source range, generated notes, and verified exis
   assert.match(workflow, /SOURCE_SHA: \$\{\{ github.event.pull_request.head.sha \}\}/);
   assert.match(workflow, /GH_TOKEN: \$\{\{ github.token \}\}/);
   assert.doesNotMatch(workflow, /workflow_dispatch:|release edit|--force/);
-  assert.match(workflow, /concurrency:\n  group: release-publication-\$\{\{ github\.repository \}\}\n  queue: max\n  cancel-in-progress: false/);
+  assert.match(workflow, /concurrency:\n {2}group: release-publication-\$\{\{ github\.repository \}\}\n {2}queue: max\n {2}cancel-in-progress: false/);
   assert.ok(result.calls.includes(`git tag --points-at ${'a'.repeat(40)}`));
 });
 

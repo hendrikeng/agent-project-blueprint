@@ -117,6 +117,14 @@
           "minLength": 1,
           "description": "Optional. Local verify:fast checks plan closeout against the merge base with this ref, for example origin/dev."
         },
+        "ciLintGateCoversChangedFiles": {
+          "type": "boolean",
+          "description": "Optional. true states that the required fast lint gate checks every file, also the formatting. CI verify:fast then skips lint:changed when that gate runs in the same job."
+        },
+        "prePushWholeProgram": {
+          "type": "boolean",
+          "description": "Optional. false leaves the typecheck gate and type-aware lint rules of a feature-branch pre-push to CI. A gated fast-forward to dev or main still runs every check."
+        },
         "changedFileObserve": {
           "type": "array",
           "items": { "type": "string", "enum": ["bun-fmt", "oxfmt", "oxlint", "eslint", "ruff-format", "ruff-check"] },

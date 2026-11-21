@@ -46,6 +46,8 @@ function runCommand(command, dryRun) {
 }
 
 async function main() {
+  // Only the pre-push hook sets PRE_PUSH_FAST. A leaked value must not drop type-aware lint rules here.
+  delete process.env.PRE_PUSH_FAST;
   const options = parseArgs(process.argv.slice(2));
   const dryRun = asBoolean(options['dry-run'], false);
   // CI may skip fast only after its prerequisite Fast Gate succeeds for this run.

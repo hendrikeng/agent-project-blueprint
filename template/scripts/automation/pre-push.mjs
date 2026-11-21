@@ -1,9 +1,12 @@
 #!/usr/bin/env node
 // Blocks a feature-branch push, and an ALLOW_PROTECTED_PUSH fast-forward to dev or main, when format, lint, or typecheck
-// fails. Target: less than 9 seconds.
+// fails (in fast mode, a feature-branch push runs only format and lint; see below). Target: less than 9 seconds.
 // It runs the formatter (bun fmt or oxfmt) and the linters on the changed files (lint-changed.mjs) and the typecheck gate from project-gates.json.
 // It never runs AI reviews. The log is local and untracked: <git dir>/pre-push.log, one tab-separated line per push.
 // VERIFY_PRE_PUSH=skip skips the checks of a feature-branch push and logs the skip. A gated push to dev or main is refused instead.
+// With validationPolicy.prePushWholeProgram false, a feature-branch push runs only lint-changed with PRE_PUSH_FAST=1, so the
+// project's ESLint configuration can drop type-aware rules, and logs `pass (fast)`. CI runs the typecheck and the type-aware
+// rules. A gated fast-forward to dev or main always runs every check.
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -32,6 +35,21 @@ export const checks = [
   ['node', './scripts/automation/check-project-gates.mjs', '--gate', 'typecheck', '--run']
 ];
 
+// Optional: validationPolicy.prePushWholeProgram false in docs/governance/policy-manifest.json. Default: true.
+export function wholeProgramOnPush() {
+  try {
+    return JSON.parse(fs.readFileSync('docs/governance/policy-manifest.json', 'utf8')).validationPolicy?.prePushWholeProgram !== false;
+  } catch {
+    return true;
+  }
+}
+
+// The checks of one push. `fast` drops the whole-program checks and keeps lint-changed.
+export function pushChecks({ allowed, wholeProgram }) {
+  const fast = !allowed && !wholeProgram;
+  return { fast, checks: fast ? checks.filter(([, script]) => script.endsWith('/lint-changed.mjs')) : checks };
+}
+
 // Git passes one `<local ref> <local sha> <remote ref> <remote sha>` line per pushed ref on stdin.
 // A deletion has an all-zero local SHA. A new remote branch has an all-zero remote SHA.
 // A branch line that does not parse throws: the protected-branch checks must not skip it.
@@ -57,7 +75,7 @@ export function protectedPushError({ branch, sha, remoteSha, exists, deleted }, 
 }
 
 // Returns true when the push can continue.
-// `allowed` marks a fast-forward to dev or main under ALLOW_PROTECTED_PUSH=1: it runs the same checks as a feature branch.
+// `allowed` marks a fast-forward to dev or main under ALLOW_PROTECTED_PUSH=1: it always runs every check, also in fast mode.
 function check(push, head, logPath, remote, allowed = false) {
   const { branch, sha } = push;
   if (!featureBranch(branch) && !allowed) return true;
@@ -74,15 +92,20 @@ function check(push, head, logPath, remote, allowed = false) {
     // A caller's VERIFY_LINT_BASE must not narrow the check. Without a base, lint-changed checks every tracked file.
     if (base) env.VERIFY_LINT_BASE = base;
     else delete env.VERIFY_LINT_BASE;
-    const failed = checks.find(([command, ...args]) => {
+    const selected = pushChecks({ allowed, wholeProgram: wholeProgramOnPush() });
+    if (selected.fast) env.PRE_PUSH_FAST = '1';
+    else delete env.PRE_PUSH_FAST;
+    const failed = selected.checks.find(([command, ...args]) => {
       console.error(`[pre-push] ${command} ${args.join(' ')}`);
       return spawnSync(command, args, { env, stdio: ['ignore', 'inherit', 'inherit'] }).status !== 0;
     });
-    result = failed ? `fail: ${failed[1]}` : 'pass';
+    // A fast push logs `pass (fast)`: CI, not the hook, runs the typecheck and the type-aware rules.
+    result = failed ? `fail: ${failed[1]}` : selected.fast ? 'pass (fast)' : 'pass';
   }
   // The escape exists only for a checked fast-forward. Without the checks, it is refused.
   if (allowed && result.startsWith('skipped')) result = `fail: ALLOW_PROTECTED_PUSH needs the checks (${result})`;
   const seconds = ((Date.now() - started) / 1000).toFixed(1);
+  if (result === 'pass (fast)') console.error(`[pre-push] ${branch}: fast mode checked format and lint only. CI runs the typecheck and the type-aware rules.`);
   if (result.startsWith('skipped')) console.error(`[pre-push] WARNING: ${branch} was pushed without format, lint, and typecheck checks (${result}). CI still checks it.`);
   console.error(`[pre-push] ${branch}: ${result} in ${seconds} s`);
   fs.appendFileSync(logPath, `${new Date().toISOString()}\t${sha}\t${branch}\t${result}\t${seconds}\n`);

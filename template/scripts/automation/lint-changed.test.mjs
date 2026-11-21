@@ -219,5 +219,18 @@ test('lint-changed checks changed files with non-ASCII names', async (t) => {
   await fs.writeFile(path.join(rootDir, ' spaced.js'), 'export {};\n');
   const untracked = run(rootDir, { VERIFY_LINT_BASE: 'HEAD' });
   assert.equal(untracked.status, 0, untracked.stderr);
-  assert.match(untracked.stdout, /OXLINT:.* --  spaced\.js ünicode\.js/, 'names stay exact, also with a leading space');
+  assert.match(untracked.stdout, /OXLINT:.* -- {2}spaced\.js ünicode\.js/, 'names stay exact, also with a leading space');
+});
+
+test('lint-changed passes PRE_PUSH_FAST to the tools only in hook mode', async (t) => {
+  const rootDir = await fixture(t, {
+    'eslint.config.js': 'export default [];\n',
+    'node_modules/eslint/package.json': JSON.stringify({ name: 'eslint', bin: { eslint: 'cli.js' } }),
+    'node_modules/eslint/cli.js': "console.log('FAST=' + process.env.PRE_PUSH_FAST);\n"
+  });
+  for (const args of [['add', 'changed.js'], ['-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-qm', 'change']]) {
+    assert.equal(spawnSync('git', args, { cwd: rootDir }).status, 0);
+  }
+  assert.match(run(rootDir, { VERIFY_LINT_BASE: 'HEAD^', PRE_PUSH_FAST: '1' }).stdout, /FAST=undefined/, 'a leaked value is dropped');
+  assert.match(run(rootDir, { VERIFY_LINT_BASE: 'HEAD^', PRE_PUSH_FAST: '1', LINT_CHANGED_TRACKED_ONLY: '1' }).stdout, /FAST=1/);
 });

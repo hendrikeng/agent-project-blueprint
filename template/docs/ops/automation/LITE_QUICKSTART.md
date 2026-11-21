@@ -33,6 +33,12 @@ If you push the checked-out feature branch, the hook runs two checks:
 1. `scripts/automation/lint-changed.mjs`: `bun fmt` (with a `[fmt]` section in `bunfig.toml`) or oxfmt, and oxlint on the committed changed files, ESLint if configured, or Ruff in a Python project.
 2. The `typecheck` gate from `docs/governance/project-gates.json`.
 
+If whole-program checks make the hook slow, set `validationPolicy.prePushWholeProgram` to `false`.
+Then a feature-branch push runs only the changed-file check with `PRE_PUSH_FAST=1`, and the ESLint configuration can drop type-aware rules.
+CI runs the typecheck and the type-aware rules. A gated push to `dev` or `main` still runs every check.
+If the required fast lint gate checks every file and also the formatting, set `validationPolicy.ciLintGateCoversChangedFiles` to `true`.
+Then CI `verify:fast` skips the changed-file check when the same job runs that gate. The CI lint gate must run the type-aware rules: only the hook sets `PRE_PUSH_FAST`.
+
 To adopt a tool step by step, list its id in `validationPolicy.changedFileObserve` in `docs/governance/policy-manifest.json`.
 The ids are `bun-fmt`, `oxfmt`, `oxlint`, `eslint`, `ruff-format`, and `ruff-check`. A listed tool reports findings and does not fail. Remove the id when the files are clean.
 If a Node tool needs more memory, for example a type-aware ESLint run, set `validationPolicy.changedFileNodeOptions`, for example `{ "eslint": ["--max-old-space-size=4096"] }`.
