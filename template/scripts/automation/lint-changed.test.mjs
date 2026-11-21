@@ -127,3 +127,22 @@ test('lint-changed from the hook checks every tracked file without a comparison 
   assert.equal(run(rootDir, { VERIFY_LINT_BASE: '', GITHUB_BASE_REF: '' }).status, 0, 'outside the hook HEAD^ stays the fallback');
   assert.equal(run(rootDir, { VERIFY_LINT_BASE: 'HEAD^', GITHUB_BASE_REF: '', LINT_CHANGED_TRACKED_ONLY: '1' }).status, 0, 'an explicit HEAD^ is accepted');
 });
+
+test('observe mode still fails when oxlint or oxfmt reports a broken configuration with exit code 1', async (t) => {
+  const rootDir = await fixture(t, {
+    '.oxlintrc.json': '{bad\n',
+    [`node_modules/oxlint/package.json`]: JSON.stringify({ name: 'oxlint', bin: { oxlint: 'cli.js' } }),
+    [`node_modules/oxlint/cli.js`]: "console.error('Failed to parse oxlint configuration file.'); process.exit(1);\n"
+  });
+  await fs.mkdir(path.join(rootDir, 'docs/governance'), { recursive: true });
+  await fs.writeFile(path.join(rootDir, 'docs/governance/policy-manifest.json'), JSON.stringify({ validationPolicy: { changedFileObserve: ['oxlint'] } }));
+  const result = run(rootDir);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /Failed to parse oxlint configuration file\./);
+  assert.match(result.stderr, /oxlint did not run: configuration error/);
+  // Findings alone keep the observe mode.
+  await fs.writeFile(path.join(rootDir, 'node_modules/oxlint/cli.js'), "console.log('x no-unused-vars'); process.exit(1);\n");
+  const findings = run(rootDir);
+  assert.equal(findings.status, 0, findings.stderr);
+  assert.match(findings.stdout, /oxlint found problems\. Observe mode/);
+});

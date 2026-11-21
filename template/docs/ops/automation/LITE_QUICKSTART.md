@@ -35,7 +35,8 @@ If you push the checked-out feature branch, the hook runs two checks:
 To adopt a tool step by step, list its id in `validationPolicy.changedFileObserve` in `docs/governance/policy-manifest.json`.
 The ids are `oxfmt`, `oxlint`, `eslint`, `ruff-format`, and `ruff-check`. A listed tool reports findings and does not fail. Remove the id when the files are clean.
 CI does not run the hook: `install-hooks.mjs` changes nothing when `CI` is set to a value other than `false` or `0`.
-A tool in observe mode still fails on an exit code other than 1. Exit code 1 can also mean a crash or a configuration error, for example in oxlint or a Node tool. Thus keep a tool in observe mode only during the adoption.
+A tool in observe mode still fails on an exit code other than 1, on a configuration error, and on a missing module.
+oxlint and oxfmt use exit code 1 for a configuration error, so the check reads their output. Keep a tool in observe mode only during the adoption.
 On Windows, Yarn Plug'n'Play projects are not supported: Node cannot start `yarn.cmd` without a shell.
 
 A local `verify:fast` normally skips plan closeout during feature work.

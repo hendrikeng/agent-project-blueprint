@@ -223,15 +223,27 @@ for (const tool of tools) {
       process.exit(1);
     }
   }
-  const result = spawnHeavy(command, [...prefix, ...tool.args, ...files], { stdio: "inherit" });
+  const observe = observed.has(tool.id);
+  // Observe mode reads the output: oxlint and oxfmt also exit with 1 when their configuration is broken.
+  const result = spawnHeavy(command, [...prefix, ...tool.args, ...files], observe
+    ? { stdio: ["inherit", "pipe", "pipe"], encoding: "utf8" }
+    : { stdio: "inherit" });
+  if (observe) {
+    process.stdout.write(result.stdout ?? "");
+    process.stderr.write(result.stderr ?? "");
+  }
   if (result.error) {
     console.error(`lint:changed: ${tool.name} is configured, but ${command} did not start: ${result.error.message}`);
     process.exit(1);
   }
   if (result.status === 0) continue;
-  // Observe mode accepts only the findings exit code 1. A crash or a configuration error still fails.
-  if (observed.has(tool.id) && result.status === 1) console.log(`lint:changed: ${tool.id} found problems. Observe mode: the check does not fail.`);
-  else status = result.status ?? 1;
+  // Observe mode accepts only findings: exit code 1 without a configuration error or a missing module in the output.
+  const broken = /Failed to (?:parse|load) (?:oxlint )?configuration|ERR_MODULE_NOT_FOUND|Cannot find module/.test(`${result.stdout}${result.stderr}`);
+  if (observe && result.status === 1 && !broken) console.log(`lint:changed: ${tool.id} found problems. Observe mode: the check does not fail.`);
+  else {
+    if (observe && broken) console.error(`lint:changed: ${tool.id} did not run: configuration error or missing module. Observe mode does not hide this.`);
+    status = result.status ?? 1;
+  }
 }
 
 process.exit(status);
