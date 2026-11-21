@@ -12,7 +12,7 @@ import {
 function extraReleaseFields() {
   try {
     const fields = JSON.parse(readFileSync("docs/governance/policy-manifest.json", "utf8")).releasePolicy?.requiredPullRequestFields;
-    return Array.isArray(fields) ? fields.filter((field) => typeof field === "string" && field.trim()) : [];
+    return Array.isArray(fields) ? fields.filter((field) => typeof field === "string").map((field) => field.trim()).filter(Boolean) : [];
   } catch {
     return [];
   }

@@ -59,7 +59,7 @@ The [deployment contract](template/docs/deploy/README.md) separates source, test
 The [completion record](distribution/ci-budget-completion.md) describes the scope and evidence.
 The public blueprint CI retains its four-job OS/Node matrix on GitHub-hosted runners. These runners are free for a public repository, and Ubicloud has no macOS runners.
 The blueprint has no dependencies, so its CI runs scripts with `node --run` and needs no package manager.
-Starter CI uses the [CI speed defaults](template/docs/ops/automation/CI_SPEED.md): Ubicloud runners, a blobless clone, a seeded `node_modules` cache, pnpm with supply-chain settings, oxfmt, oxlint, TypeScript 7, parallel gate jobs, affected tests on PRs, and time budgets.
+Starter CI uses the [CI speed defaults](template/docs/ops/automation/CI_SPEED.md): Ubicloud runners, a blobless clone, a seeded `node_modules` cache, pnpm with supply-chain settings, `bun fmt`, oxlint, `bun check`, parallel build and test jobs at a flat billed-minute cost, affected tests on PRs, and time budgets.
 
 ## Start Here
 

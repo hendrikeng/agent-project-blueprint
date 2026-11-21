@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import process from 'node:process';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { inferPlanId } from './lib/plan-metadata.mjs';
 import {
   ACTIVE_PLAN_DIR,
@@ -40,7 +40,8 @@ try {
   if (isCandidateDispatch(head, process.env, event)) {
     gitBytes(['merge-base', '--is-ancestor', head, 'origin/dev']);
   }
-  const branchName = resolveCloseoutBranch(actualBranch, head, process.env, event, parents);
+  const isAncestor = (ancestor, commit) => spawnSync('git', ['merge-base', '--is-ancestor', ancestor, commit]).status === 0;
+  const branchName = resolveCloseoutBranch(actualBranch, head, process.env, event, parents, isAncestor);
   const changeBranchName = event && process.env.GITHUB_EVENT_NAME === 'pull_request'
     ? event.pull_request.head?.ref || branchName : branchName;
   // A local prediction (verify-fast closeoutPredictionRef) checks the branch that the change will merge into.
@@ -52,12 +53,12 @@ try {
     console.log('plans:verify:closeout skipped during local feature iteration; CI or an explicit baseline checks delivery.');
     process.exit(0);
   }
-  const requestedBase = resolveCloseoutBase({ head, parents, mergeHeads, event,
+  const requestedBase = resolveCloseoutBase({ head, parents, mergeHeads, event, isAncestor,
     eventName: event ? process.env.GITHUB_EVENT_NAME : null,
     explicitBase: process.env.PLAN_CLOSEOUT_BASE_REF });
   const base = gitOutput(['rev-parse', '--verify', `${requestedBase}^{commit}`]);
   if (event) {
-    const eventBase = resolveCloseoutBase({ head, parents, mergeHeads, event, eventName: process.env.GITHUB_EVENT_NAME });
+    const eventBase = resolveCloseoutBase({ head, parents, mergeHeads, event, isAncestor, eventName: process.env.GITHUB_EVENT_NAME });
     if (base !== gitOutput(['rev-parse', '--verify', `${eventBase}^{commit}`])) {
       throw new Error('Explicit closeout baseline conflicts with the verified CI event.');
     }

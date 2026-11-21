@@ -427,9 +427,14 @@ export function analyzeReleaseRange(argv = process.argv.slice(2)) {
   };
 }
 
-// Commit subjects and author names are contributor text in public notes: no links, images, HTML, or mentions.
+// Commit subjects, author names, and mapping rationales are contributor text in public notes.
+// No Markdown links or images, no HTML or character references, no mentions, and no bare-URL autolinks.
 export function markdownText(value) {
-  return String(value).replace(/[\\`*_{}[\]<>()#+!|~]/g, "\\$&").replace(/@/g, "@\u200b");
+  return String(value)
+    .replace(/[\\`*_{}[\]<>()#+!|~&]/g, "\\$&")
+    .replace(/@/g, "@\u200b")
+    .replace(/:\/\//g, ":\u200b//")
+    .replace(/www\./gi, (match) => `${match.slice(0, 3)}\u200b.`);
 }
 
 export function renderReleaseNotes(report) {
@@ -468,8 +473,8 @@ export function renderReleaseNotes(report) {
   lines.push("");
   if (report.mappedStandardChanges.length > 0) {
     for (const change of report.mappedStandardChanges) {
-      lines.push(`- \`${change.hash.slice(0, 12)}\` - ${change.title}`);
-      lines.push(`  - Rationale: ${change.rationale}`);
+      lines.push(`- \`${change.hash.slice(0, 12)}\` - ${markdownText(change.title)}`);
+      lines.push(`  - Rationale: ${markdownText(change.rationale)}`);
     }
   } else {
     lines.push("- none identified automatically");
@@ -489,12 +494,12 @@ export function renderReleaseNotes(report) {
     lines.push("- none identified");
   } else {
     for (const plan of report.plans) {
-      lines.push(`- \`${plan.planId}\` - ${plan.title}`);
+      lines.push(`- \`${plan.planId}\` - ${markdownText(plan.title)}`);
       lines.push(`  - Completed plan: \`${plan.filePath}\``);
       lines.push(`  - Evidence: \`${plan.doneEvidence || "missing"}\``);
       if (plan.evidenceBullets.length > 0) {
         for (const bullet of plan.evidenceBullets.slice(0, 4)) {
-          lines.push(`  - ${bullet}`);
+          lines.push(`  - ${markdownText(bullet)}`);
         }
       }
     }

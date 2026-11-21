@@ -219,5 +219,7 @@ test('release metadata parser remains compatible with unbulleted metadata', () =
 
 test('release notes escape contributor text', () => {
   assert.equal(markdownText('Fix [login](https://evil.example) @org/team <img src=x>'),
-    'Fix \\[login\\]\\(https://evil.example\\) @\u200borg/team \\<img src=x\\>');
+    'Fix \\[login\\]\\(https:\u200b//evil.example\\) @\u200borg/team \\<img src=x\\>');
+  assert.equal(markdownText('see www.evil.example and &#64;team'), 'see www\u200b.evil.example and \\&\\#64;team');
+  assert.equal(markdownText('docs _www.evil.example'), 'docs \\_www\u200b.evil.example');
 });

@@ -83,6 +83,14 @@ test('verify-fast predicts plan closeout against the configured integration ref 
   assert.equal(closeout(), `[verify-fast] dry-run: PLAN_CLOSEOUT_BASE_REF=${base} PLAN_CLOSEOUT_BRANCH_NAME=main node ./scripts/automation/check-plan-closeout.mjs`);
   await fs.writeFile(path.join(rootDir, 'docs/governance/policy-manifest.json'), JSON.stringify({ validationPolicy: { closeoutPredictionRef: 'refs/remotes/origin/main' } }));
   assert.match(closeout(), /PLAN_CLOSEOUT_BRANCH_NAME=main node/);
+  // A local release branch keeps its full name: release/ is not a remote.
+  git('branch', 'release/2026.11.01.1', base);
+  await fs.writeFile(path.join(rootDir, 'docs/governance/policy-manifest.json'), JSON.stringify({ validationPolicy: { closeoutPredictionRef: 'release/2026.11.01.1' } }));
+  assert.match(closeout(), /PLAN_CLOSEOUT_BRANCH_NAME=release\/2026\.11\.01\.1 node/);
+  git('remote', 'add', 'origin', 'https://example.invalid/repo.git');
+  git('update-ref', 'refs/remotes/origin/main', base);
+  await fs.writeFile(path.join(rootDir, 'docs/governance/policy-manifest.json'), JSON.stringify({ validationPolicy: { closeoutPredictionRef: 'origin/main' } }));
+  assert.match(closeout(), /PLAN_CLOSEOUT_BRANCH_NAME=main node/);
   assert.equal(closeout({ VERIFY_FAST_SKIP_CLOSEOUT: '1' }), plain);
   assert.equal(closeout({ GITHUB_ACTIONS: 'true' }), plain);
   git('checkout', '-q', 'main');

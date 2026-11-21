@@ -29,11 +29,11 @@ If hosted CI cannot run, run the full gate on the exact commit first. Then set `
 The hook does not run the gate. It allows only a fast-forward of the fetched branch, and it writes the push to its log.
 If you push the checked-out feature branch, the hook runs two checks:
 
-1. `scripts/automation/lint-changed.mjs`: oxfmt and oxlint on the committed changed files, ESLint if configured, or Ruff in a Python project.
+1. `scripts/automation/lint-changed.mjs`: `bun fmt` (with a `[fmt]` section in `bunfig.toml`) or oxfmt, and oxlint on the committed changed files, ESLint if configured, or Ruff in a Python project.
 2. The `typecheck` gate from `docs/governance/project-gates.json`.
 
 To adopt a tool step by step, list its id in `validationPolicy.changedFileObserve` in `docs/governance/policy-manifest.json`.
-The ids are `oxfmt`, `oxlint`, `eslint`, `ruff-format`, and `ruff-check`. A listed tool reports findings and does not fail. Remove the id when the files are clean.
+The ids are `bun-fmt`, `oxfmt`, `oxlint`, `eslint`, `ruff-format`, and `ruff-check`. A listed tool reports findings and does not fail. Remove the id when the files are clean.
 If a Node tool needs more memory, for example a type-aware ESLint run, set `validationPolicy.changedFileNodeOptions`, for example `{ "eslint": ["--max-old-space-size=4096"] }`.
 If `node` is not on the `PATH` of the Git client, the hook stops with a message. Start Git from a shell that loads Node.
 CI does not run the hook: `install-hooks.mjs` changes nothing when `CI` is set to a value other than `false` or `0`.

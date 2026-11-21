@@ -89,10 +89,13 @@ function closeoutPredictionRef() {
   }
 }
 
+// The branch part of the ref: strip refs/heads/, refs/remotes/<remote>/, or <remote>/ only when it is a
+// remote-tracking ref. A local branch such as release/2026.11.01.1 keeps its full name.
 function closeoutBranch(ref) {
   if (ref.startsWith('refs/remotes/')) return ref.split('/').slice(3).join('/');
   if (ref.startsWith('refs/heads/')) return ref.slice('refs/heads/'.length);
-  return ref.includes('/') ? ref.slice(ref.indexOf('/') + 1) : ref;
+  const remoteTracking = spawnSync('git', ['show-ref', '--verify', '--quiet', `refs/remotes/${ref}`]).status === 0;
+  return remoteTracking ? ref.slice(ref.indexOf('/') + 1) : ref;
 }
 
 function closeoutCommand() {

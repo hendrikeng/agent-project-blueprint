@@ -119,7 +119,7 @@
         },
         "changedFileObserve": {
           "type": "array",
-          "items": { "type": "string", "enum": ["oxfmt", "oxlint", "eslint", "ruff-format", "ruff-check"] },
+          "items": { "type": "string", "enum": ["bun-fmt", "oxfmt", "oxlint", "eslint", "ruff-format", "ruff-check"] },
           "description": "Optional. Changed-file tools that report findings without failing, for example during a formatter adoption."
         },
         "changedFileNodeOptions": {

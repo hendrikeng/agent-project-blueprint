@@ -58,8 +58,11 @@ function dependsOn(packageJson, name) {
 // so a Vue project keeps ESLint with the Vue plugin, and an adopted project can switch later.
 function selectTools() {
   const packageJson = readPackageJson();
-  const formatter =
-    existsSync(".oxfmtrc.json") || existsSync(".oxfmtrc.jsonc") || dependsOn(packageJson, "oxfmt")
+  // bun fmt (a [fmt] section in bunfig.toml) comes first: it was faster than oxfmt with the same output on 90 of 91 files.
+  const bunFormat = existsSync("bunfig.toml") && /^\s*(?:\[\s*fmt\s*[\].]|fmt\.)/m.test(readFileSync("bunfig.toml", "utf8"));
+  const formatter = bunFormat
+    ? { id: "bun-fmt", name: "bun", binary: "bun", args: ["fmt", "--check", "--no-error-on-unmatched-pattern"] }
+    : existsSync(".oxfmtrc.json") || existsSync(".oxfmtrc.jsonc") || dependsOn(packageJson, "oxfmt")
       ? { id: "oxfmt", name: "oxfmt", args: ["--check", "--no-error-on-unmatched-pattern"] }
       : null;
   const eslintConfigs = [
@@ -138,7 +141,7 @@ if (!isGitRepository()) {
 
 const tools = selectTools();
 if (tools.length === 0) {
-  console.log("lint:changed skipped because neither oxfmt, oxlint, ESLint, nor Ruff is configured in this repository.");
+  console.log("lint:changed skipped because neither bun fmt, oxfmt, oxlint, ESLint, nor Ruff is configured in this repository.");
   process.exit(0);
 }
 
@@ -179,7 +182,7 @@ const untrackedFilesOutput = hookMode
   : runGit(["ls-files", "--others", "--exclude-standard"], { allowFailure: true }) ?? "";
 
 // Optional: validationPolicy.changedFileObserve in docs/governance/policy-manifest.json lists tool ids
-// (oxfmt, oxlint, eslint, ruff-format, ruff-check) that report findings without failing, for example during a formatter adoption.
+// (bun-fmt, oxfmt, oxlint, eslint, ruff-format, ruff-check) that report findings without failing, for example during a formatter adoption.
 function validationPolicy() {
   try {
     return JSON.parse(readFileSync("docs/governance/policy-manifest.json", "utf8")).validationPolicy ?? {};
@@ -249,13 +252,16 @@ for (const tool of tools) {
       process.stderr.write(result.stderr ?? "");
     }
     if (result.error) {
-      console.error(`lint:changed: ${tool.name} is configured, but ${command} did not start: ${result.error.message}`);
+      console.error(result.error.code === "ENOBUFS"
+        ? `lint:changed: ${tool.id} printed more than 256 MB, so its result is unknown.`
+        : `lint:changed: ${tool.name} is configured, but ${command} did not start: ${result.error.message}`);
       process.exit(1);
     }
     if (result.status === 0) continue;
     // Observe mode accepts only findings: exit code 1 without a fatal tool message at the start of a line.
     // Code frames of findings are indented, so source text cannot match.
-    const broken = /^(?:Failed to (?:parse|load) (?:oxlint )?configuration|Error \[ERR_MODULE_NOT_FOUND\]|Error: Cannot find module)/m.test(`${result.stdout}\n${result.stderr}`);
+    // Bun prints fatal errors as `error: ...` at the start of a line. Its format findings do not.
+    const broken = /^(?:Failed to (?:parse|load) (?:oxlint )?configuration|Error \[ERR_MODULE_NOT_FOUND\]|Error: Cannot find module|error: )/m.test(`${result.stdout}\n${result.stderr}`);
     if (observe && result.status === 1 && !broken) console.log(`lint:changed: ${tool.id} found problems. Observe mode: the check does not fail.`);
     else {
       if (observe && broken) console.error(`lint:changed: ${tool.id} did not run: configuration error or missing module. Observe mode does not hide this.`);

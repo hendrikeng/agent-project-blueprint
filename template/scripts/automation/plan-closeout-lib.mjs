@@ -234,7 +234,15 @@ export function isCandidateDispatch(head, env, event) {
     env.GITHUB_WORKFLOW_REF === `${env.GITHUB_REPOSITORY}/.github/workflows/ci-candidate.yml@${trustedRef}`;
 }
 
-export function resolveCloseoutBranch(actualBranch, head, env, event = null, parents = []) {
+// A pull_request merge commit that GitHub rebuilt after the base moved: the payload merge SHA and base SHA are stale.
+// It still belongs to the PR when its second parent is the PR head and its first parent contains the payload base.
+export function rebuiltPullRequestMerge(head, event, parents, isAncestor = (ancestor, commit) => ancestor === commit) {
+  const pr = event?.pull_request;
+  return Boolean(pr) && pr.merge_commit_sha !== head && parents.length === 2 && /^[a-f0-9]{40}$/.test(parents[1]) &&
+    parents[1] === pr.head?.sha && Boolean(pr.base?.sha) && isAncestor(pr.base.sha, parents[0]);
+}
+
+export function resolveCloseoutBranch(actualBranch, head, env, event = null, parents = [], isAncestor = undefined) {
   if (actualBranch && env.GITHUB_ACTIONS !== 'true') return actualBranch;
   // The caller also proves origin/dev ancestry before accepting this selected checkout.
   if (!actualBranch && isCandidateDispatch(head, env, event)) return 'dev';
@@ -242,11 +250,8 @@ export function resolveCloseoutBranch(actualBranch, head, env, event = null, par
     throw new Error('Detached closeout requires GitHub event context matching the checked-out commit.');
   }
   let branch;
-  // GitHub computes the test merge asynchronously, so the payload merge SHA can be stale. The
-  // checked-out merge commit is still bound to the PR when its second parent is the PR head.
-  const boundMerge = event?.pull_request?.merge_commit_sha === head ||
-    (parents.length === 2 && /^[a-f0-9]{40}$/.test(parents[1]) && parents[1] === event?.pull_request?.head?.sha &&
-      parents[0] === event?.pull_request?.base?.sha);
+  // GitHub computes the test merge asynchronously, so the payload merge SHA can be stale.
+  const boundMerge = event?.pull_request?.merge_commit_sha === head || rebuiltPullRequestMerge(head, event, parents, isAncestor);
   if (env.GITHUB_EVENT_NAME === 'pull_request' && env.GITHUB_REF === `refs/pull/${event?.number}/merge` &&
       boundMerge) {
     branch = event.pull_request.base?.ref;
@@ -272,9 +277,11 @@ export function isLocalFeatureIteration(actualBranch, env, mergeHeads) {
     !env.PLAN_CLOSEOUT_BASE_REF && env.GITHUB_ACTIONS !== 'true' && mergeHeads.length === 0;
 }
 
-export function resolveCloseoutBase({ head, parents, mergeHeads, event = null, eventName, explicitBase }) {
+export function resolveCloseoutBase({ head, parents, mergeHeads, event = null, eventName, explicitBase, isAncestor = undefined }) {
   if (mergeHeads.length > 1) throw new Error('Ambiguous closeout baseline: multiple pending merge heads.');
+  // A rebuilt merge diffs against its first parent: that is the moved base, so other PRs stay out of the diff.
   const base = explicitBase || (mergeHeads.length ? head :
+    eventName === 'pull_request' && rebuiltPullRequestMerge(head, event, parents, isAncestor) ? parents[0] :
     eventName === 'pull_request' ? event?.pull_request?.base?.sha :
     eventName === 'merge_group' ? event?.merge_group?.base_sha :
     eventName === 'push' ? event?.before : parents[0]);

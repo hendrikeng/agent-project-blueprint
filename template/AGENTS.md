@@ -79,8 +79,9 @@ Before you mark a PR ready, add `ci:full`, or merge, read `docs/ops/automation/I
 Target: a PR result in less than 2 minutes at the median. Never make CI faster by hiding failures.
 Do not add retries, longer timeouts, or skipped tests. If a check needs a retry, the check has a bug. Find the bug.
 The full suite runs before a change gets to `dev`. Affected-test selection only makes PR feedback smaller.
-Install with pnpm and keep its supply-chain settings in `pnpm-workspace.yaml`. Use oxfmt, oxlint, and `tsc` from TypeScript 7.
-For `.vue` files, keep `vue-tsc` and ESLint with the Vue plugin. TypeScript 7 and oxlint do not check Vue templates.
+Install with pnpm and keep its supply-chain settings in `pnpm-workspace.yaml`. Use `bun fmt`, oxlint, and `bun check`.
+Use the standard runner size. The billed minutes per run must not increase: do less work instead.
+For `.vue` files, keep `vue-tsc` and ESLint with the Vue plugin. `bun check`, TypeScript 7, and oxlint do not check Vue templates.
 For Python, use uv, Ruff, pytest-xdist, and pytest-randomly.
 Each CI job has a time budget (`timeout-minutes`). If a job is slower, find the cause. Do not raise the budget.
 The pre-push hook runs format, lint, and typecheck. Do not skip it with `--no-verify`.

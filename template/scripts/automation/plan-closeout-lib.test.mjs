@@ -5,8 +5,7 @@ import {
   isHighRiskStandardChangePath,
   isCandidateDispatch,
   resolveCloseoutBranch,
-  summarizePlanCloseoutDiff
-} from './plan-closeout-lib.mjs';
+  summarizePlanCloseoutDiff, resolveCloseoutBase } from './plan-closeout-lib.mjs';
 
 test('closeout diff keeps head paths and excludes deleted active plans', () => {
   assert.deepEqual(
@@ -111,7 +110,12 @@ test('a pull request merge commit binds through its PR head parent when the payl
   assert.equal(resolveCloseoutBranch('', head, env, event, ['b'.repeat(40), prHead]), 'dev');
   assert.throws(() => resolveCloseoutBranch('', head, env, event, ['b'.repeat(40), 'e'.repeat(40)]), /Detached closeout/);
   assert.throws(() => resolveCloseoutBranch('', head, env, event, [prHead]), /Detached closeout/);
-  // A merge on a newer base would mix other PRs into the closeout diff.
-  assert.throws(() => resolveCloseoutBranch('', head, env, event, ['f'.repeat(40), prHead]), /Detached closeout/);
+  // A merge that GitHub rebuilt on a newer base binds when the payload base is its ancestor, and diffs against the new base.
+  const moved = 'f'.repeat(40);
+  const contains = (ancestor, commit) => ancestor === 'b'.repeat(40) && commit === moved;
+  assert.equal(resolveCloseoutBranch('', head, env, event, [moved, prHead], contains), 'dev');
+  assert.throws(() => resolveCloseoutBranch('', head, env, event, [moved, prHead]), /Detached closeout/);
+  assert.equal(resolveCloseoutBase({ head, parents: [moved, prHead], mergeHeads: [], event, eventName: 'pull_request', isAncestor: contains }), moved);
+  assert.equal(resolveCloseoutBase({ head: 'a'.repeat(40), parents: [moved, prHead], mergeHeads: [], event, eventName: 'pull_request', isAncestor: contains }), 'b'.repeat(40));
   assert.throws(() => resolveCloseoutBranch('', head, env, event), /Detached closeout/);
 });

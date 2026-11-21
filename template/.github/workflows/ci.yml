@@ -25,8 +25,9 @@ env:
   # PRs into main, merge groups, and ci-candidate.yml keep the full mode.
   CI_LIGHT_MODE: ${{ (github.event_name == 'pull_request' && github.base_ref != 'main') && 'true' || '' }}
 
-# Runners: Ubicloud for every job (the Ubicloud GitHub App must be installed). Each timeout-minutes value is a time budget.
-# A job that takes longer fails. If a job needs more time, find the cause first. Do not raise the budget to hide it.
+# Runners: Ubicloud standard size for every job (the Ubicloud GitHub App must be installed). Do not use larger runners.
+# Cost rule: billed minutes per run must not increase. Each job pays its own setup and a rounded minute, so short gates
+# share a job. Each timeout-minutes value is a time budget: a slower job fails. Find the cause; do not raise the budget.
 
 jobs:
   scope:
@@ -70,8 +71,9 @@ jobs:
     runs-on: ubicloud-standard-2
     timeout-minutes: 10
     env:
-      # These gates run in parallel jobs below. Full Gate requires their results.
-      PROJECT_GATES_IN_JOBS: lint,typecheck,unit-tests,build
+      # Build and unit tests run in parallel jobs below. Full Gate requires their results.
+      # Lint and typecheck take seconds, so they run here: a separate job would add billed setup minutes.
+      PROJECT_GATES_IN_JOBS: unit-tests,build
     outputs:
       full: ${{ steps.full.outcome }}
     steps:
@@ -123,28 +125,18 @@ jobs:
           overwrite: true
           retention-days: 7
 
-  # Lint, typecheck, build, and unit tests run in parallel, each with its own time budget.
+  # The build runs in parallel with Fast Gate and unit tests.
   project-gate:
-    name: Project ${{ matrix.gate }}
+    name: Project build
     needs: scope
     if: >-
       always() && needs.scope.result == 'success' &&
       contains(fromJSON('["product","broad","harness","full"]'), needs.scope.outputs.scope) &&
       !(github.event_name == 'pull_request' && (github.event.pull_request.draft || ((github.event.action == 'opened' || github.event.action == 'reopened') && github.event.pull_request.user.type != 'Bot' && !startsWith(github.event.pull_request.head.ref, 'release/') && github.event.pull_request.head.repo.full_name == github.repository) || (github.event.action == 'edited' && !github.event.changes.base) || (github.event.action == 'labeled' && github.event.label.name != 'ci:full')))
     runs-on: ubicloud-standard-2
-    timeout-minutes: ${{ matrix.budget }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - gate: lint
-            budget: 2
-          - gate: typecheck
-            budget: 2
-          - gate: build
-            budget: 5
+    timeout-minutes: 5
     steps:
-      # Blobless clone: these gates must not read old file contents, for example through `git diff`.
+      # Blobless clone: the build must not read old file contents, for example through `git diff`.
       # A gate that needs them must run in a job with a full clone. Do not use a shallow clone.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -157,9 +149,7 @@ jobs:
           install-command: ${{ env.CI_INSTALL_COMMAND }}
           package-manager: ${{ env.PACKAGE_MANAGER_CACHE }}
           lockfile: ${{ env.PACKAGE_MANAGER_LOCKFILE }}
-      - run: node ./scripts/automation/check-project-gates.mjs --gate "$GATE" --run
-        env:
-          GATE: ${{ matrix.gate }}
+      - run: node ./scripts/automation/check-project-gates.mjs --gate build --run
 
   # Pull requests outside main run only the tests that the diff can reach (the gate affectedCommand).
   # The ci:full label, PRs into main, and merge groups run the full suite. Full Gate requires the full suite.

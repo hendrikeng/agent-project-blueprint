@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Blocks a feature-branch push when format, lint, or typecheck fails. Target: less than 9 seconds.
-// It runs oxfmt and oxlint on the changed files (lint-changed.mjs) and the typecheck gate from project-gates.json.
+// It runs the formatter (bun fmt or oxfmt) and the linters on the changed files (lint-changed.mjs) and the typecheck gate from project-gates.json.
 // It never runs AI reviews. The log is local and untracked: <git dir>/pre-push.log, one tab-separated line per push.
 // VERIFY_PRE_PUSH=skip skips the checks and logs the skip.
 import fs from 'node:fs';

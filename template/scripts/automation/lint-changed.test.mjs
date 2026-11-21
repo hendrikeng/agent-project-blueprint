@@ -182,3 +182,26 @@ test('lint-changed splits long file lists, and a finding that quotes a fatal mes
   assert.deepEqual(result.stdout.match(/RUN \d+/g), ['RUN 200', 'RUN 51']);
   assert.match(result.stdout, /oxlint found problems\. Observe mode/);
 });
+
+test('lint-changed runs bun fmt instead of oxfmt when bunfig.toml has a [fmt] section', async (t) => {
+  const rootDir = await fixture(t, { 'bunfig.toml': '[fmt]\n', '.oxfmtrc.json': '{}\n', ...pkg('oxfmt', 'OXFMT', 0) });
+  const binDir = path.join(rootDir, '.heavy');
+  await fs.mkdir(binDir);
+  await fs.writeFile(path.join(binDir, 'bun'), fake('BUN', 0), { mode: 0o755 });
+  const result = run(rootDir, { PATH: `${binDir}${path.delimiter}${process.env.PATH}` });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /BUN:fmt --check --no-error-on-unmatched-pattern -- changed\.js/);
+  assert.doesNotMatch(result.stdout, /OXFMT/);
+});
+
+test('observe mode still fails when bun fmt reports a fatal error', async (t) => {
+  const rootDir = await fixture(t, { 'bunfig.toml': '[ fmt ]\n' });
+  const binDir = path.join(rootDir, '.heavy');
+  await fs.mkdir(binDir);
+  await fs.writeFile(path.join(binDir, 'bun'), '#!/bin/sh\necho "error: Unknown key \\"ignore\\" in [fmt]"\nexit 1\n', { mode: 0o755 });
+  await fs.mkdir(path.join(rootDir, 'docs/governance'), { recursive: true });
+  await fs.writeFile(path.join(rootDir, 'docs/governance/policy-manifest.json'), JSON.stringify({ validationPolicy: { changedFileObserve: ['bun-fmt'] } }));
+  const result = run(rootDir, { PATH: `${binDir}${path.delimiter}${process.env.PATH}` });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /bun-fmt did not run/);
+});
