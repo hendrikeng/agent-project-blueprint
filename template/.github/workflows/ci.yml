@@ -38,11 +38,11 @@ jobs:
     outputs:
       scope: ${{ steps.scope.outputs.scope }}
     steps:
-      # Blobless clone: full history for diffs, file contents only on demand. Do not use a shallow clone.
+      # Full clone: this job reads old file contents. With persist-credentials: false, a blobless clone
+      # cannot download them later in a private repository. Jobs that read no history use a blobless clone.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-          filter: blob:none
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
@@ -86,7 +86,6 @@ jobs:
         if: needs.scope.outputs.scope != 'metadata'
         with:
           fetch-depth: 0
-          filter: blob:none
           persist-credentials: false
       - uses: ./.github/actions/setup
         if: needs.scope.outputs.scope != 'metadata'
@@ -145,6 +144,7 @@ jobs:
           - gate: build
             budget: 5
     steps:
+      # Blobless clone: these gates read no history contents. Do not use a shallow clone.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
@@ -177,7 +177,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-          filter: blob:none
           persist-credentials: false
       - uses: ./.github/actions/setup
         with:
@@ -201,7 +200,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-          filter: blob:none
           persist-credentials: false
       - uses: ./.github/actions/setup
         with:

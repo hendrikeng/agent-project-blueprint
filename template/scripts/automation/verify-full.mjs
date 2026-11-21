@@ -1,8 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
 
-const rootDir = process.cwd();
-
 function parseArgs(argv) {
   const options = {};
   for (let index = 0; index < argv.length; index += 1) {

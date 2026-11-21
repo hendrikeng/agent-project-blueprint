@@ -10,7 +10,13 @@ import { pathToFileURL } from 'node:url';
 
 const git = (...args) => execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
 
-export const featureBranch = (branch) => Boolean(branch) && !['HEAD', 'dev', 'main'].includes(branch) && !branch.startsWith('release/');
+// The blueprint branch model: changes reach dev and main only through pull requests.
+export const protectedBranches = ['dev', 'main'];
+export const featureBranch = (branch) => Boolean(branch) && !['HEAD', ...protectedBranches].includes(branch) && !branch.startsWith('release/');
+
+// Git exports these variables to hooks, also for `git -c` settings. Tests that create their own repositories must not see them.
+export const hookEnv = (env) => Object.fromEntries(Object.entries(env).filter(([key]) =>
+  !/^GIT_(?:DIR|WORK_TREE|INDEX_FILE|COMMON_DIR|OBJECT_DIRECTORY|ALTERNATE_OBJECT_DIRECTORIES|PREFIX|QUARANTINE_PATH|CONFIG_PARAMETERS|CONFIG_COUNT|CONFIG_KEY_\d+|CONFIG_VALUE_\d+)$/.test(key)));
 
 export const checks = [
   ['node', './scripts/automation/lint-changed.mjs'],
@@ -35,8 +41,7 @@ function check({ branch, sha }, head, logPath) {
   else if (sha !== head) result = 'skipped: not checked out';
   else if (git('status', '--porcelain', '--untracked-files=no')) result = 'skipped: uncommitted changes';
   else {
-    // Git exports GIT_DIR and similar variables to hooks. Tests that create their own repositories must not see them.
-    const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !/^GIT_(?:DIR|WORK_TREE|INDEX_FILE|COMMON_DIR|OBJECT_DIRECTORY|ALTERNATE_OBJECT_DIRECTORIES|PREFIX|QUARANTINE_PATH)$/.test(key)));
+    const env = { ...hookEnv(process.env), LINT_CHANGED_TRACKED_ONLY: '1' };
     const failed = checks.find(([command, ...args]) => {
       console.error(`[pre-push] ${command} ${args.join(' ')}`);
       return spawnSync(command, args, { env, stdio: ['ignore', 'inherit', 'inherit'] }).status !== 0;
@@ -52,8 +57,14 @@ function check({ branch, sha }, head, logPath) {
 function main() {
   const logPath = path.resolve(git('rev-parse', '--git-dir'), 'pre-push.log');
   const head = git('rev-parse', 'HEAD');
+  const pushed = pushedBranches(fs.readFileSync(0, 'utf8'));
+  const protectedPush = pushed.find(({ branch }) => protectedBranches.includes(branch));
+  if (protectedPush) {
+    console.error(`[pre-push] Direct pushes to ${protectedPush.branch} are not allowed. Open a pull request.`);
+    return false;
+  }
   let ok = true;
-  for (const pushed of pushedBranches(fs.readFileSync(0, 'utf8'))) ok = check(pushed, head, logPath) && ok;
+  for (const branch of pushed) ok = check(branch, head, logPath) && ok;
   if (!ok) console.error('[pre-push] Fix the findings above and push again.');
   return ok;
 }

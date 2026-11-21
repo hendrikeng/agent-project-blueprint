@@ -111,6 +111,16 @@
         "notes": {
           "type": "string",
           "minLength": 8
+        },
+        "closeoutPredictionRef": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Optional. Local verify:fast checks plan closeout against the merge base with this ref, for example origin/dev."
+        },
+        "changedFileObserve": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["oxfmt", "oxlint", "eslint", "ruff-format", "ruff-check"] },
+          "description": "Optional. Changed-file tools that report findings without failing, for example during a formatter adoption."
         }
       },
       "additionalProperties": false

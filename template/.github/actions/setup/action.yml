@@ -27,10 +27,11 @@ runs:
       shell: bash
       run: corepack enable
     # Cache node_modules, not only the package store. The install still runs and repairs a partial restore.
+    # `npm ci` deletes node_modules first, so npm caches its package store instead.
     - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: node_modules
-        key: node-modules-${{ runner.os }}-${{ runner.arch }}-node${{ inputs.node-version }}-${{ hashFiles(inputs.lockfile, 'package.json') }}
-        restore-keys: node-modules-${{ runner.os }}-${{ runner.arch }}-node${{ inputs.node-version }}-
+        path: ${{ inputs.package-manager == 'npm' && '~/.npm' || 'node_modules' }}
+        key: deps-${{ inputs.package-manager }}-${{ runner.os }}-${{ runner.arch }}-node${{ inputs.node-version }}-${{ hashFiles(inputs.lockfile, 'package.json') }}
+        restore-keys: deps-${{ inputs.package-manager }}-${{ runner.os }}-${{ runner.arch }}-node${{ inputs.node-version }}-
     - shell: bash
       run: ${{ inputs.install-command }}

@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 
-import { pushedBranches } from './pre-push.mjs';
+import { hookEnv, pushedBranches } from './pre-push.mjs';
 import { createScriptsRepo } from './test-helpers.mjs';
 
 test('pre-push reads pushed branches from Git and ignores deletions and tags', () => {
@@ -24,7 +24,7 @@ test('pre-push blocks a failed check on the checked-out feature branch and logs 
   const root = await createScriptsRepo(t);
   const git = (...args) => spawnSync('git', args, { cwd: root, encoding: 'utf8' });
   // Stub checks: lint-changed fails while FAIL_LINT is set. The typecheck gate prints GIT_DIR.
-  await fs.writeFile(path.join(root, 'scripts/automation/lint-changed.mjs'), "console.log('LINT'); process.exitCode = process.env.FAIL_LINT ? 3 : 0;\n");
+  await fs.writeFile(path.join(root, 'scripts/automation/lint-changed.mjs'), "console.log('LINT', process.env.LINT_CHANGED_TRACKED_ONLY); process.exitCode = process.env.FAIL_LINT ? 3 : 0;\n");
   await fs.writeFile(path.join(root, 'scripts/automation/check-project-gates.mjs'), "console.log('TYPECHECK', process.argv.slice(2).join(' '), 'GIT_DIR=' + process.env.GIT_DIR);\n");
   git('init', '-q', '-b', 'dev');
   git('-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-q', '--allow-empty', '-m', 'base');
@@ -43,7 +43,7 @@ test('pre-push blocks a failed check on the checked-out feature branch and logs 
 
   const passed = hook(pushSlice, { GIT_DIR: path.join(root, '.git') });
   assert.equal(passed.status, 0, passed.stderr);
-  assert.match(passed.stdout, /LINT\nTYPECHECK --gate typecheck --run GIT_DIR=undefined/);
+  assert.match(passed.stdout, /LINT 1\nTYPECHECK --gate typecheck --run GIT_DIR=undefined/);
   const failed = hook(pushSlice, { FAIL_LINT: '1' });
   assert.equal(failed.status, 1);
   assert.doesNotMatch(failed.stdout, /TYPECHECK/, 'the first failure stops the checks');
@@ -54,7 +54,9 @@ test('pre-push blocks a failed check on the checked-out feature branch and logs 
   git('checkout', '-q', 'dev');
   assert.equal(hook(pushSlice, { FAIL_LINT: '1' }).status, 0, 'the checks read the working tree, not the pushed commit');
   const devSha = git('rev-parse', 'HEAD').stdout.trim();
-  assert.equal(hook(`refs/heads/dev ${devSha} refs/heads/dev ${'0'.repeat(40)}\n`, { FAIL_LINT: '1' }).status, 0);
+  const direct = hook(`refs/heads/dev ${devSha} refs/heads/dev ${'0'.repeat(40)}\n`);
+  assert.equal(direct.status, 1);
+  assert.match(direct.stderr, /Direct pushes to dev are not allowed/);
   const lines = (await fs.readFile(logPath, 'utf8')).trim().split('\n').map((line) => line.split('\t'));
   assert.deepEqual(lines.map((fields) => fields.slice(1, 4)), [
     [sha, 'slice/x', 'pass'],
@@ -62,5 +64,11 @@ test('pre-push blocks a failed check on the checked-out feature branch and logs 
     [sha, 'slice/x', 'skipped'],
     [sha, 'slice/x', 'skipped: uncommitted changes'],
     [sha, 'slice/x', 'skipped: not checked out']
-  ], 'dev pushes run no checks and write no line');
+  ], 'a refused dev push writes no line');
+});
+
+test('pre-push checks do not inherit Git variables of the hook, also not git -c settings', () => {
+  const env = hookEnv({ PATH: '/bin', GIT_DIR: '.git', GIT_CONFIG_PARAMETERS: "'core.hooksPath'='x'", GIT_CONFIG_COUNT: '1',
+    GIT_CONFIG_KEY_0: 'user.name', GIT_CONFIG_VALUE_0: 't', GIT_AUTHOR_NAME: 'kept' });
+  assert.deepEqual(env, { PATH: '/bin', GIT_AUTHOR_NAME: 'kept' });
 });

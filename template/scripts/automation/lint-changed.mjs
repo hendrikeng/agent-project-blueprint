@@ -50,7 +50,7 @@ function selectTools() {
   const packageJson = readPackageJson();
   const formatter =
     existsSync(".oxfmtrc.json") || existsSync(".oxfmtrc.jsonc") || dependsOn(packageJson, "oxfmt")
-      ? { name: "oxfmt", args: ["--check"] }
+      ? { id: "oxfmt", name: "oxfmt", args: ["--check", "--no-error-on-unmatched-pattern"] }
       : null;
   const eslintConfigs = [
     "eslint.config.js",
@@ -65,16 +65,19 @@ function selectTools() {
     ".eslintrc.yml",
   ];
   const oxlint = existsSync(".oxlintrc.json") || dependsOn(packageJson, "oxlint")
-    ? { name: "oxlint", args: ["--deny-warnings"] }
+    ? { id: "oxlint", name: "oxlint", args: ["--deny-warnings", "--no-error-on-unmatched-pattern"] }
     : null;
   const eslint = eslintConfigs.some((filePath) => existsSync(filePath)) || packageJson.eslintConfig || dependsOn(packageJson, "eslint")
-    ? { name: "eslint", args: ["--max-warnings", "0", "--no-warn-ignored"] }
+    ? { id: "eslint", name: "eslint", args: ["--max-warnings", "0", "--no-warn-ignored"] }
     : null;
   const tools = [formatter, oxlint, eslint].filter(Boolean);
   // Python projects: Ruff formats and lints. The project virtual environment comes first, then PATH.
   if (existsSync("ruff.toml") || existsSync(".ruff.toml") || /^\[tool\.ruff\b/m.test(existsSync("pyproject.toml") ? readFileSync("pyproject.toml", "utf8") : "")) {
-    const binary = existsSync(path.join(".venv", "bin", "ruff")) ? path.join(".venv", "bin", "ruff") : "ruff";
-    tools.push({ name: "ruff", binary, args: ["format", "--check"], python: true }, { name: "ruff", binary, args: ["check"], python: true });
+    const binary = [path.join(".venv", "bin", "ruff"), path.join(".venv", "Scripts", "ruff.exe")].find((file) => existsSync(file)) ?? "ruff";
+    tools.push(
+      { id: "ruff-format", name: "ruff", binary, args: ["format", "--check"], python: true },
+      { id: "ruff-check", name: "ruff", binary, args: ["check"], python: true },
+    );
   }
   return tools;
 }
@@ -140,10 +143,21 @@ const changedFilesOutput =
     allowFailure: true,
   }) ?? "";
 
-const untrackedFilesOutput =
-  runGit(["ls-files", "--others", "--exclude-standard"], {
-    allowFailure: true,
-  }) ?? "";
+// The pre-push hook checks only committed files: an untracked scratch file is not part of the push.
+const untrackedFilesOutput = process.env.LINT_CHANGED_TRACKED_ONLY === "1"
+  ? ""
+  : runGit(["ls-files", "--others", "--exclude-standard"], { allowFailure: true }) ?? "";
+
+// Optional: validationPolicy.changedFileObserve in docs/governance/policy-manifest.json lists tool ids
+// (oxfmt, oxlint, eslint, ruff-format, ruff-check) that report findings without failing, for example during a formatter adoption.
+function observedTools() {
+  try {
+    const ids = JSON.parse(readFileSync("docs/governance/policy-manifest.json", "utf8")).validationPolicy?.changedFileObserve;
+    return new Set(Array.isArray(ids) ? ids : []);
+  } catch {
+    return new Set();
+  }
+}
 
 const changedFiles = collectLintableChangedFiles(
   changedFilesOutput,
@@ -163,24 +177,29 @@ console.log(
 );
 
 let status = 0;
+const observed = observedTools();
 for (const tool of tools) {
   const files = tool.python ? pythonFiles : changedFiles;
   if (files.length === 0) continue;
   // The local binary starts faster than a package-manager runner and works with every package manager.
-  const binary = tool.binary ?? path.join("node_modules", ".bin", process.platform === "win32" ? `${tool.name}.cmd` : tool.name);
-  if (!tool.binary && !existsSync(binary)) {
-    console.error(`lint:changed: ${tool.name} is configured, but ${binary} is missing. Install the dependencies.`);
-    process.exit(1);
+  // Yarn Plug'n'Play has no node_modules/.bin, so Yarn runs the tool. No shell: file names stay arguments.
+  let command = tool.binary ?? path.join("node_modules", ".bin", tool.name);
+  let prefix = [];
+  if (!tool.binary && !existsSync(command)) {
+    if (!existsSync(".pnp.cjs")) {
+      console.error(`lint:changed: ${tool.name} is configured, but ${command} is missing. Install the dependencies.`);
+      process.exit(1);
+    }
+    [command, prefix] = ["yarn", [tool.name]];
   }
-  const result = spawnHeavy(binary, [...tool.args, ...files], {
-    stdio: "inherit",
-    shell: process.platform === "win32",
-  });
+  const result = spawnHeavy(command, [...prefix, ...tool.args, ...files], { stdio: "inherit" });
   if (result.error) {
-    console.error(`lint:changed: ${tool.name} is configured, but ${binary} did not start: ${result.error.message}`);
+    console.error(`lint:changed: ${tool.name} is configured, but ${command} did not start: ${result.error.message}`);
     process.exit(1);
   }
-  if (result.status !== 0) status = result.status ?? 1;
+  if (result.status === 0) continue;
+  if (observed.has(tool.id)) console.log(`lint:changed: ${tool.id} found problems. Observe mode: the check does not fail.`);
+  else status = result.status ?? 1;
 }
 
 process.exit(status);

@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
+import fs from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
 
 import { createScriptsRepo, runNode } from './test-helpers.mjs';
 
@@ -59,4 +61,30 @@ test('verify-fast can scope plan metadata verification to one plan', async (t) =
   assert.equal(result.status, 0, String(result.stderr));
   assert.match(String(result.stdout), /repair-plan-references\.mjs --check/);
   assert.match(String(result.stdout), /check-plan-metadata\.mjs --plan-id red-inbox/);
+});
+
+test('verify-fast predicts plan closeout against the configured integration ref only when the project opts in', async (t) => {
+  const rootDir = await createScriptsRepo(t);
+  const script = path.join(rootDir, 'scripts/automation/verify-fast.mjs');
+  const git = (...args) => spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', ...args], { cwd: rootDir, encoding: 'utf8' }).stdout.trim();
+  git('init', '-q', '-b', 'main');
+  git('commit', '-q', '--allow-empty', '-m', 'base');
+  const base = git('rev-parse', 'HEAD');
+  git('update-ref', 'refs/remotes/origin/main', base);
+  git('checkout', '-q', '-b', 'slice/x');
+  git('commit', '-q', '--allow-empty', '-m', 'change');
+  const closeout = (env = {}) => String(runNode(script, ['--dry-run', '--scope', 'docs'], rootDir, { GITHUB_ACTIONS: '', PLAN_CLOSEOUT_BASE_REF: '', VERIFY_FAST_SKIP_CLOSEOUT: '', ...env }).stdout)
+    .split('\n').find((line) => line.includes('check-plan-closeout.mjs'));
+  const plain = '[verify-fast] dry-run: node ./scripts/automation/check-plan-closeout.mjs';
+
+  assert.equal(closeout(), plain, 'without configuration the local run keeps the iteration mode');
+  await fs.mkdir(path.join(rootDir, 'docs/governance'), { recursive: true });
+  await fs.writeFile(path.join(rootDir, 'docs/governance/policy-manifest.json'), JSON.stringify({ validationPolicy: { closeoutPredictionRef: 'origin/main' } }));
+  assert.equal(closeout(), `[verify-fast] dry-run: PLAN_CLOSEOUT_BASE_REF=${base} node ./scripts/automation/check-plan-closeout.mjs`);
+  assert.equal(closeout({ VERIFY_FAST_SKIP_CLOSEOUT: '1' }), plain);
+  assert.equal(closeout({ GITHUB_ACTIONS: 'true' }), plain);
+  git('checkout', '-q', 'main');
+  assert.equal(closeout(), plain, 'no commits ahead of the ref');
+  git('update-ref', '-d', 'refs/remotes/origin/main');
+  assert.equal(closeout(), plain, 'a missing ref keeps the iteration mode');
 });

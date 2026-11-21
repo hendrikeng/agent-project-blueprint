@@ -1,8 +1,12 @@
 #!/usr/bin/env node
+import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { spawnHeavyShell } from './lib/agent-heavy.mjs';
 
 const PLAN_ID_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const CLOSEOUT_COMMAND = 'node ./scripts/automation/check-plan-closeout.mjs';
+// Extra environment for one command. Set only by closeoutCommand().
+const commandEnv = new Map();
 
 function parseArgs(argv) {
   const options = {};
@@ -38,10 +42,11 @@ function toPosix(value) {
 
 function runCommand(command, dryRun) {
   if (dryRun) {
-    console.log(`[verify-fast] dry-run: ${command}`);
+    const extra = Object.entries(commandEnv.get(command) ?? {}).map(([key, value]) => `${key}=${value} `).join('');
+    console.log(`[verify-fast] dry-run: ${extra}${command}`);
     return { status: 0 };
   }
-  const options = { stdio: 'inherit', env: process.env };
+  const options = { stdio: 'inherit', env: { ...process.env, ...commandEnv.get(command) } };
   // Project gates and lint take their own slots; only the harness suite is heavy at this level.
   const result = command === 'node --run harness:test'
     ? spawnHeavyShell(command, options)
@@ -73,6 +78,40 @@ function resolvedPlanMetadataCommand() {
   return `node ./scripts/automation/check-plan-metadata.mjs --plan-id ${planId}`;
 }
 
+// Optional: validationPolicy.closeoutPredictionRef in docs/governance/policy-manifest.json, for example "origin/dev".
+// Then a local run checks plan closeout against the merge base with that ref, as CI does for a PR into it.
+function closeoutPredictionRef() {
+  try {
+    const ref = JSON.parse(readFileSync('docs/governance/policy-manifest.json', 'utf8')).validationPolicy?.closeoutPredictionRef;
+    return typeof ref === 'string' ? ref.trim() : '';
+  } catch {
+    return '';
+  }
+}
+
+function closeoutCommand() {
+  // CI has its own verified event context. An explicit baseline wins.
+  const ref = closeoutPredictionRef();
+  if (!ref || process.env.GITHUB_ACTIONS === 'true' || process.env.PLAN_CLOSEOUT_BASE_REF) return CLOSEOUT_COMMAND;
+  if (asBoolean(process.env.VERIFY_FAST_SKIP_CLOSEOUT, false)) {
+    console.log('[verify-fast] VERIFY_FAST_SKIP_CLOSEOUT is set. Closeout runs in local iteration mode.');
+    return CLOSEOUT_COMMAND;
+  }
+  const git = (...args) => spawnSync('git', args, { encoding: 'utf8' });
+  const base = git('merge-base', 'HEAD', ref);
+  if (base.status !== 0) {
+    console.log(`[verify-fast] ${ref} is not available. Closeout runs in local iteration mode.`);
+    return CLOSEOUT_COMMAND;
+  }
+  const baseSha = base.stdout.trim();
+  if (baseSha === git('rev-parse', 'HEAD').stdout.trim()) {
+    console.log(`[verify-fast] No commits ahead of ${ref}. Closeout runs in local iteration mode.`);
+    return CLOSEOUT_COMMAND;
+  }
+  commandEnv.set(CLOSEOUT_COMMAND, { PLAN_CLOSEOUT_BASE_REF: baseSha });
+  return CLOSEOUT_COMMAND;
+}
+
 function buildCommandSet(changedFiles, scope) {
   const commands = [
     'node ./scripts/automation/compile-runtime-context.mjs --check',
@@ -84,7 +123,7 @@ function buildCommandSet(changedFiles, scope) {
     'node --run eval:integrity',
     ...(['broad', 'harness'].includes(scope) ? ['node --run harness:test'] : []),
     resolvedPlanMetadataCommand(),
-    'node ./scripts/automation/check-plan-closeout.mjs',
+    closeoutCommand(),
     'node ./scripts/automation/check-harness-alignment.mjs',
     `node ./scripts/automation/check-project-gates.mjs --profile fast${['broad', 'product'].includes(scope) ? ' --run' : ''}`,
     ...(['broad', 'harness'].includes(scope) ? ['node ./scripts/agent-hardening/check-agent-hardening.mjs'] : [])
@@ -114,6 +153,11 @@ async function main() {
   for (const command of commands) {
     const execution = runCommand(command, dryRun);
     if (execution.status !== 0) {
+      if (commandEnv.has(command)) {
+        console.error(`[verify-fast] This branch would fail plan closeout after it merges into ${closeoutPredictionRef()}.`);
+        console.error('[verify-fast] Close out the plan in the same PR: move it to docs/exec-plans/completed/ with its evidence index.');
+        console.error('[verify-fast] For mid-iteration work only, run again with VERIFY_FAST_SKIP_CLOSEOUT=1.');
+      }
       process.exit(execution.status);
     }
   }

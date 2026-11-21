@@ -14,8 +14,10 @@ const top = git('rev-parse', '--show-toplevel');
 const hooksDir = top && path.resolve(top, git('rev-parse', '--git-path', 'hooks'));
 const hooksPath = git('config', 'core.hooksPath');
 let reason = '';
+// CI checkouts keep their Git hooks: a later bot push must not run or refuse through the local hook.
+if (process.env.CI) reason = 'CI is set';
 // The hook runs ./scripts/automation/pre-push.mjs from the repository root, so the package must be that root.
-if (!top || fs.realpathSync(top) !== fs.realpathSync(process.cwd())) reason = 'the package is not at the repository root';
+else if (!top || fs.realpathSync(top) !== fs.realpathSync(process.cwd())) reason = 'the package is not at the repository root';
 else if (!fs.existsSync(path.join(top, '.githooks'))) reason = 'no .githooks directory';
 else if (hooksPath === '.githooks') reason = 'already installed';
 else if (hooksPath) reason = `core.hooksPath is already ${hooksPath}`;

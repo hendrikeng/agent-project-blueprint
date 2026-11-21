@@ -234,3 +234,14 @@ test('affected commands get the same checks as commands, and aggregate commands 
     });
   }
 });
+
+test('an empty affectedCommand means no selection, and --affected needs one gate', async (t) => {
+  const gates = baselineGates.map((gate) => ({ ...gate }));
+  Object.assign(gates[2], { status: 'deferred', command: '', affectedCommand: '', rationale: 'No unit test runner exists in this fixture yet.' });
+  const rootDir = await createFixtureRoot(t, gates);
+  const valid = spawnSync('node', [scriptPath], { cwd: rootDir, encoding: 'utf8' });
+  assert.equal(valid.status, 0, valid.stderr);
+  const profile = spawnSync('node', [scriptPath, '--profile', 'fast', '--affected'], { cwd: rootDir, encoding: 'utf8' });
+  assert.equal(profile.status, 1);
+  assert.match(profile.stderr, /--affected needs --gate/);
+});

@@ -44,9 +44,10 @@ test('lint-changed runs oxfmt and oxlint on changed files, in an agent-heavy slo
     await t.test(name, () => {
       const result = run(rootDir, { ...extraEnv, PATH: `${heavyDir}${path.delimiter}${process.env.PATH}` });
       assert.equal(result.status, 3, result.stderr);
-      assert.match(result.stdout, /OXFMT:--check changed\.js/);
-      assert.match(result.stdout, /OXLINT:--deny-warnings changed\.js/);
-      assert.equal(result.stdout.includes('HEAVY:-- node_modules/.bin/oxlint --deny-warnings changed.js'), wrapped);
+      // A change to ignored files only must pass, so both tools accept an empty file selection.
+      assert.match(result.stdout, /OXFMT:--check --no-error-on-unmatched-pattern changed\.js/);
+      assert.match(result.stdout, /OXLINT:--deny-warnings --no-error-on-unmatched-pattern changed\.js/);
+      assert.equal(result.stdout.includes('HEAVY:-- node_modules/.bin/oxlint --deny-warnings --no-error-on-unmatched-pattern changed.js'), wrapped);
     });
   }
 });
@@ -59,7 +60,7 @@ test('lint-changed runs each configured linter, so Vue projects keep ESLint next
   await fs.writeFile(path.join(both, 'Card.vue'), '<template><div /></template>\n');
   const result = run(both);
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /OXLINT:--deny-warnings Card\.vue changed\.js/);
+  assert.match(result.stdout, /OXLINT:--deny-warnings --no-error-on-unmatched-pattern Card\.vue changed\.js/);
   assert.match(result.stdout, /ESLINT:--max-warnings 0 --no-warn-ignored Card\.vue changed\.js/);
 
   const missing = await fixture(t, { '.oxlintrc.json': '{}\n' });
@@ -74,4 +75,27 @@ test('lint-changed runs Ruff format and check on changed Python files only', asy
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /RUFF:format --check changed\.py\nRUFF:check changed\.py/);
   assert.doesNotMatch(result.stdout, /changed\.js/);
+});
+
+test('lint-changed observes configured tools, can skip untracked files, and runs Yarn under Plug and Play', async (t) => {
+  const rootDir = await fixture(t, {
+    'pyproject.toml': '[tool.ruff]\n', '.venv/bin/ruff': fake('RUFF', 1),
+    'package.json': JSON.stringify({ devDependencies: { oxlint: '1' } }), '.pnp.cjs': '\n'
+  });
+  await fs.mkdir(path.join(rootDir, 'docs/governance'), { recursive: true });
+  await fs.writeFile(path.join(rootDir, 'docs/governance/policy-manifest.json'), JSON.stringify({ validationPolicy: { changedFileObserve: ['ruff-format'] } }));
+  const yarnDir = path.join(rootDir, '.heavy');
+  await fs.mkdir(yarnDir);
+  await fs.writeFile(path.join(yarnDir, 'yarn'), fake('YARN', 0), { mode: 0o755 });
+  const env = { PATH: `${yarnDir}${path.delimiter}${process.env.PATH}` };
+
+  const result = run(rootDir, env);
+  assert.equal(result.status, 1, 'ruff check still blocks');
+  assert.match(result.stdout, /ruff-format found problems\. Observe mode: the check does not fail\./);
+  assert.doesNotMatch(result.stdout, /ruff-check found problems/);
+  assert.match(result.stdout, /YARN:oxlint --deny-warnings --no-error-on-unmatched-pattern changed\.js/);
+  // changed.js and changed.py are untracked, so the tracked-only run has nothing to check.
+  const tracked = run(rootDir, { ...env, LINT_CHANGED_TRACKED_ONLY: '1' });
+  assert.equal(tracked.status, 0, tracked.stderr);
+  assert.match(tracked.stdout, /found no lintable files/);
 });

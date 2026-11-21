@@ -183,7 +183,8 @@ function validateConfig(config, templateMode) {
       findings.push(`Gate '${id || index}' needs a rationale of at least 16 characters.`);
     }
     validateCommand(gate, findings, templateMode);
-    if (gate.affectedCommand !== undefined) {
+    // An empty affectedCommand means no selection, so a deferred or not-applicable gate can keep the key.
+    if (gate.affectedCommand !== undefined && gate.affectedCommand !== '') {
       if (typeof gate.affectedCommand !== 'string' || status !== 'required') findings.push(`Gate '${id || index}' can declare affectedCommand only as a string on a required gate.`);
       else validateCommand(gate, findings, templateMode, 'affectedCommand');
     }
@@ -248,6 +249,8 @@ async function main() {
   }
 
   if (options.gate && !config.gates.some((gate) => gate.id === options.gate)) fail(`Unknown gate '${options.gate}'.`);
+  // One selection value per step: a profile run would overwrite it with each gate.
+  if (options.affected && !options.gate) fail('--affected needs --gate.');
   const inJobs = new Set(String(process.env.PROJECT_GATES_IN_JOBS ?? '').split(',').map((id) => id.trim()).filter(Boolean));
   const selected = options.gate
     ? config.gates.filter((gate) => gate.id === options.gate)
