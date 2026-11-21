@@ -26,7 +26,8 @@ The `pre-push` hook stops the push when a check fails. The target time is less t
 The hook refuses direct pushes to an existing `dev` or `main` branch. Merge through a pull request.
 The hook also refuses to delete `dev` or `main`. The first push that creates the branch is allowed.
 If hosted CI cannot run, run the full gate on the exact commit first. Then set `ALLOW_PROTECTED_PUSH=1` for the fast-forward push.
-The hook does not run the gate. It allows only a fast-forward of the fetched branch, and it writes the push to its log.
+The hook still runs format, lint, and typecheck against the remote tip of the branch, but not the full gate. Check out the pushed commit without local changes: otherwise the hook refuses the push.
+It allows only a fast-forward of the fetched branch, and it writes the push to its log.
 If you push the checked-out feature branch, the hook runs two checks:
 
 1. `scripts/automation/lint-changed.mjs`: `bun fmt` (with a `[fmt]` section in `bunfig.toml`) or oxfmt, and oxlint on the committed changed files, ESLint if configured, or Ruff in a Python project.

@@ -77,6 +77,13 @@ test('pre-push blocks a failed check on the checked-out feature branch and logs 
   assert.equal(direct.status, 1);
   assert.match(direct.stderr, /Direct pushes to dev are not allowed/);
   assert.equal(hook(existing, { ALLOW_PROTECTED_PUSH: '1' }).status, 0);
+  // The gated fallback still runs format, lint, and typecheck: a failing check stops it.
+  const gated = hook(existing, { ALLOW_PROTECTED_PUSH: '1', FAIL_LINT: '1' });
+  assert.equal(gated.status, 1);
+  // The gated push is linted against the remote tip that it fast-forwards.
+  assert.match(gated.stdout, new RegExp(`LINT 1 ${devSha}`));
+  // Without the checks, the escape is refused.
+  assert.equal(hook(existing, { ALLOW_PROTECTED_PUSH: '1', VERIFY_PRE_PUSH: 'skip' }).status, 1);
   const lines = (await fs.readFile(logPath, 'utf8')).trim().split('\n').map((line) => line.split('\t'));
   assert.deepEqual(lines.map((fields) => fields.slice(1, 4)), [
     [sha, 'slice/x', 'pass'],
@@ -85,8 +92,11 @@ test('pre-push blocks a failed check on the checked-out feature branch and logs 
     [sha, 'slice/x', 'skipped'],
     [sha, 'slice/x', 'skipped: uncommitted changes'],
     [sha, 'slice/x', 'skipped: not checked out'],
-    [devSha, 'dev', 'allowed: ALLOW_PROTECTED_PUSH']
-  ], 'dev pushes run no checks, and only the escape writes a line');
+    [devSha, 'dev', 'pass'],
+    [devSha, 'dev', 'allowed: ALLOW_PROTECTED_PUSH'],
+    [devSha, 'dev', 'fail: ./scripts/automation/lint-changed.mjs'],
+    [devSha, 'dev', 'fail: ALLOW_PROTECTED_PUSH needs the checks (skipped)']
+  ], 'only the gated escape checks and logs a dev push');
 });
 
 test('pre-push checks do not inherit Git variables of the hook, also not git -c settings', () => {

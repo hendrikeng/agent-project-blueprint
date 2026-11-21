@@ -1,8 +1,9 @@
 #!/usr/bin/env node
-// Blocks a feature-branch push when format, lint, or typecheck fails. Target: less than 9 seconds.
+// Blocks a feature-branch push, and an ALLOW_PROTECTED_PUSH fast-forward to dev or main, when format, lint, or typecheck
+// fails. Target: less than 9 seconds.
 // It runs the formatter (bun fmt or oxfmt) and the linters on the changed files (lint-changed.mjs) and the typecheck gate from project-gates.json.
 // It never runs AI reviews. The log is local and untracked: <git dir>/pre-push.log, one tab-separated line per push.
-// VERIFY_PRE_PUSH=skip skips the checks and logs the skip.
+// VERIFY_PRE_PUSH=skip skips the checks of a feature-branch push and logs the skip. A gated push to dev or main is refused instead.
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -56,9 +57,10 @@ export function protectedPushError({ branch, sha, remoteSha, exists, deleted }, 
 }
 
 // Returns true when the push can continue.
-function check(push, head, logPath, remote) {
+// `allowed` marks a fast-forward to dev or main under ALLOW_PROTECTED_PUSH=1: it runs the same checks as a feature branch.
+function check(push, head, logPath, remote, allowed = false) {
   const { branch, sha } = push;
-  if (!featureBranch(branch)) return true;
+  if (!featureBranch(branch) && !allowed) return true;
   const started = Date.now();
   let result;
   if (process.env.VERIFY_PRE_PUSH === 'skip') result = 'skipped';
@@ -67,14 +69,19 @@ function check(push, head, logPath, remote) {
   else if (git('status', '--porcelain', '--untracked-files=no')) result = 'skipped: uncommitted changes';
   else {
     const env = { ...hookEnv(process.env), LINT_CHANGED_TRACKED_ONLY: '1' };
-    const base = lintBase(remote);
+    // A gated push to dev or main is checked against the remote tip that it fast-forwards: exactly what the branch receives.
+    const base = allowed ? push.remoteSha : lintBase(remote);
+    // A caller's VERIFY_LINT_BASE must not narrow the check. Without a base, lint-changed checks every tracked file.
     if (base) env.VERIFY_LINT_BASE = base;
+    else delete env.VERIFY_LINT_BASE;
     const failed = checks.find(([command, ...args]) => {
       console.error(`[pre-push] ${command} ${args.join(' ')}`);
       return spawnSync(command, args, { env, stdio: ['ignore', 'inherit', 'inherit'] }).status !== 0;
     });
     result = failed ? `fail: ${failed[1]}` : 'pass';
   }
+  // The escape exists only for a checked fast-forward. Without the checks, it is refused.
+  if (allowed && result.startsWith('skipped')) result = `fail: ALLOW_PROTECTED_PUSH needs the checks (${result})`;
   const seconds = ((Date.now() - started) / 1000).toFixed(1);
   if (result.startsWith('skipped')) console.error(`[pre-push] WARNING: ${branch} was pushed without format, lint, and typecheck checks (${result}). CI still checks it.`);
   console.error(`[pre-push] ${branch}: ${result} in ${seconds} s`);
@@ -101,7 +108,8 @@ function main() {
     return false;
   }
   let ok = true;
-  for (const branch of pushed.filter(({ deleted }) => !deleted)) ok = check(branch, head, logPath, remote) && ok;
+  const isAllowed = ({ branch, exists }) => allow && exists && protectedBranches.includes(branch);
+  for (const branch of pushed.filter(({ deleted }) => !deleted)) ok = check(branch, head, logPath, remote, isAllowed(branch)) && ok;
   if (!ok) {
     console.error('[pre-push] Fix the findings above and push again.');
     return false;

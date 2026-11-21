@@ -7,10 +7,12 @@ import { collectLintableChangedFiles, collectPythonChangedFiles } from "./lint-c
 
 function runGit(args, { allowFailure = false } = {}) {
   try {
-    return execFileSync("git", args, {
+    const output = execFileSync("git", args, {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
-    }).trim();
+    });
+    // -z output keeps file names exact, also leading or trailing spaces.
+    return args.includes("-z") ? output : output.trim();
   } catch (error) {
     if (allowFailure) {
       return null;
@@ -168,8 +170,8 @@ if (!checkAll && !comparisonBase) {
 }
 
 const changedFilesDiff = checkAll
-  ? runGit(["ls-files"], { allowFailure: true })
-  : runGit(["diff", "--name-only", "--diff-filter=ACMR", comparisonBase], { allowFailure: true });
+  ? runGit(["ls-files", "-z"], { allowFailure: true })
+  : runGit(["diff", "--name-only", "-z", "--diff-filter=ACMR", comparisonBase], { allowFailure: true });
 if (hookMode && changedFilesDiff === null) {
   console.error(`lint:changed: git could not list the changed files, so no files were checked.`);
   process.exit(1);
@@ -179,7 +181,7 @@ const changedFilesOutput = changedFilesDiff ?? "";
 // The pre-push hook checks only committed files: an untracked scratch file is not part of the push.
 const untrackedFilesOutput = hookMode
   ? ""
-  : runGit(["ls-files", "--others", "--exclude-standard"], { allowFailure: true }) ?? "";
+  : runGit(["ls-files", "-z", "--others", "--exclude-standard"], { allowFailure: true }) ?? "";
 
 // Optional: validationPolicy.changedFileObserve in docs/governance/policy-manifest.json lists tool ids
 // (bun-fmt, oxfmt, oxlint, eslint, ruff-format, ruff-check) that report findings without failing, for example during a formatter adoption.

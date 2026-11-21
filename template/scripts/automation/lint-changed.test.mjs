@@ -205,3 +205,19 @@ test('observe mode still fails when bun fmt reports a fatal error', async (t) =>
   assert.equal(result.status, 1);
   assert.match(result.stderr, /bun-fmt did not run/);
 });
+
+test('lint-changed checks changed files with non-ASCII names', async (t) => {
+  const rootDir = await fixture(t, { '.oxlintrc.json': '{}\n', ...pkg('oxlint', 'OXLINT', 0) });
+  await fs.writeFile(path.join(rootDir, 'café.js'), 'export {};\n');
+  for (const args of [['add', 'café.js', 'changed.js'], ['-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-qm', 'change']]) {
+    assert.equal(spawnSync('git', args, { cwd: rootDir }).status, 0);
+  }
+  const tracked = run(rootDir, { VERIFY_LINT_BASE: 'HEAD^' });
+  assert.equal(tracked.status, 0, tracked.stderr);
+  assert.match(tracked.stdout, /OXLINT:--deny-warnings --no-error-on-unmatched-pattern -- café\.js changed\.js/);
+  await fs.writeFile(path.join(rootDir, 'ünicode.js'), 'export {};\n');
+  await fs.writeFile(path.join(rootDir, ' spaced.js'), 'export {};\n');
+  const untracked = run(rootDir, { VERIFY_LINT_BASE: 'HEAD' });
+  assert.equal(untracked.status, 0, untracked.stderr);
+  assert.match(untracked.stdout, /OXLINT:.* --  spaced\.js ünicode\.js/, 'names stay exact, also with a leading space');
+});

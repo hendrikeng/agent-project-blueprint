@@ -24,8 +24,8 @@ function collectChangedFiles(extensions, outputs) {
   return Array.from(
     new Set(
       outputs
-        .flatMap((output) => output.split("\n"))
-        .map((file) => file.trim())
+        // Git -z output separates names with NUL and keeps them exact. Newline output is trimmed.
+        .flatMap((output) => output.includes("\0") ? output.split("\0") : output.split("\n").map((file) => file.trim()))
         .filter(Boolean)
         .filter((file) => extensions.has(path.extname(file))),
     ),
