@@ -62,7 +62,7 @@ function invalidReleaseCommandFields(body) {
   return RELEASE_COMMAND_FIELDS.filter(([label, script]) => {
     const line = lines.find((candidate) => candidate.startsWith(label));
     const command = line?.slice(label.length).trim().replace(/^`|`$/g, "") ?? "";
-    return !new RegExp(`^(?:npm run|pnpm(?: run)?|yarn(?: run)?|bun run) ${script}$`).test(command);
+    return !new RegExp(`^(?:npm run|pnpm(?: run)?|yarn(?: run)?|bun run|node --run) ${script}$`).test(command);
   });
 }
 

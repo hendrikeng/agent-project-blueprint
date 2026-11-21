@@ -9,16 +9,25 @@ export const LINTABLE_EXTENSIONS = new Set([
   ".cts",
   ".mjs",
   ".cjs",
+  ".vue",
 ]);
 
 export function collectLintableChangedFiles(...outputs) {
+  return collectChangedFiles(LINTABLE_EXTENSIONS, outputs);
+}
+
+export function collectPythonChangedFiles(...outputs) {
+  return collectChangedFiles(new Set([".py", ".pyi"]), outputs);
+}
+
+function collectChangedFiles(extensions, outputs) {
   return Array.from(
     new Set(
       outputs
         .flatMap((output) => output.split("\n"))
         .map((file) => file.trim())
         .filter(Boolean)
-        .filter((file) => LINTABLE_EXTENSIONS.has(path.extname(file))),
+        .filter((file) => extensions.has(path.extname(file))),
     ),
   ).sort();
 }

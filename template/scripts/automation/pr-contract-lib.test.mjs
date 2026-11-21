@@ -18,6 +18,7 @@ const releaseBody = `## Release Contract
 test('release PR contract accepts equivalent package-manager commands but rejects missing scripts', () => {
   const input = { headRef: 'release/2026.07.13.1', baseRef: 'main', title: 'Release 2026.07.13.1' };
   assert.deepEqual(validatePrContract({ ...input, body: releaseBody.replaceAll('npm run', 'pnpm') }), []);
+  assert.deepEqual(validatePrContract({ ...input, body: releaseBody.replaceAll('npm run', 'node --run') }), []);
   for (const body of [releaseBody.replace('`npm run release:notes`', ''), releaseBody.replace('release:verify', 'not-run'), releaseBody.replace('`npm run release:notes`', '`echo release:notes`'), releaseBody.replace('- Release notes generated:', 'Missing field: - Release notes generated:')]) {
     assert.match(validatePrContract({ ...input, body }).join('\n'), /must reference release:/);
   }

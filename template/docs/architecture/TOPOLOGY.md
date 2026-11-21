@@ -14,4 +14,4 @@ Mark a transitional surface with its current role and removal trigger. Put propo
 ## Verification
 
 Update this map when runtime ownership changes. Keep `ARCHITECTURE.md` and `docs/governance/architecture-rules.json` aligned.
-Verify import rules with `npm run architecture:verify`. An empty configuration does not prove enforcement.
+Verify import rules with `node --run architecture:verify`. An empty configuration does not prove enforcement.

@@ -7,17 +7,19 @@ import { spawnSync } from 'node:child_process';
 import { classifyChanges } from '../template/scripts/ci/classify-change.mjs';
 
 const workflow = (name) => readFileSync(new URL(`../template/.github/workflows/${name}.yml`, import.meta.url), 'utf8');
+const setupAction = readFileSync(new URL('../template/.github/actions/setup/action.yml', import.meta.url), 'utf8');
 
 test('starter workflows pin external actions and avoid implicit package-manager caching', () => {
   const root = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
-  for (const [index, raw] of [root, workflow('ci'), workflow('ci-candidate'), workflow('release-tag')].entries()) {
+  for (const [index, raw] of [root, workflow('ci'), workflow('ci-candidate'), workflow('release-tag'), workflow('ci-cache'), setupAction].entries()) {
     const content = raw.replace(/^[ \t]*#[^\r\n]*(?:\r?\n|$)/gm, '');
     const actions = content.split(/^[ \t]+-[ \t]+(?=[\w-]+:)/m)
       .map(block => [block.match(/^[ \t]*uses:[ \t]+([^\r\n]+)/m)?.[1].trim(), block])
       .filter(([reference]) => reference);
     assert.ok(actions.length > 0);
     for (const [reference, block] of actions) {
-      assert.match(reference, /^actions\/[a-z-]+@[a-f0-9]{40}(?:\s+#.*)?$/);
+      // External actions are pinned to a commit. The local setup action is part of the repository.
+      if (reference !== './.github/actions/setup') assert.match(reference, /^(?:actions\/[a-z-]+|oven-sh\/setup-bun)@[a-f0-9]{40}(?:\s+#.*)?$/);
       const options = block.match(/^([ \t]+)with:[ \t]*\r?\n((?:\1[ \t]+[^\r\n]*(?:\r?\n|$)|\r?\n)*)/m)?.[2] ?? '';
       if (reference.startsWith('actions/setup-node@')) assert.match(options, /^[ \t]+package-manager-cache:[ \t]+false[ \t]*(?:#.*)?$/m);
       if (index < 2 && reference.startsWith('actions/checkout@')) assert.match(options, /^[ \t]+persist-credentials:[ \t]+false[ \t]*(?:#.*)?$/m);
@@ -49,14 +51,14 @@ test('default CI retains required aggregates, contract, and release coverage', (
     assert.ok(ci.includes(`|| '${name}'`), `Metadata must not replace ${name}`);
   }
   assert.match(ci, /name: PR Contract/);
-  assert.match(ci, /needs: \[scope, fast-gate, release-candidate-gate\]\s+if: >-\s+always\(\)/);
-  for (const result of ['SCOPE_RESULT', 'FAST_RESULT', 'RELEASE_RESULT']) assert.ok(ci.includes(`test "$${result}" = success`));
-  assert.match(ci, /npm run verify:full -- --skip-fast\s+id: full\s+if: \(needs.scope.outputs.scope == 'full'/);
+  assert.match(ci, /needs: \[scope, fast-gate, release-candidate-gate, project-gate, unit-tests\]\s+if: >-\s+always\(\)/);
+  for (const result of ['SCOPE_RESULT', 'FAST_RESULT', 'RELEASE_RESULT', 'GATES_RESULT', 'TESTS_RESULT']) assert.ok(ci.includes(`test "$${result}" = success`));
+  assert.match(ci, /node --run verify:full -- --skip-fast\s+id: full\s+if: \(needs.scope.outputs.scope == 'full'/);
   // Only a passed PR Full records its tree for exact-tree candidate reuse.
   assert.match(ci, /id: tree\n\s+if: steps.full.outcome == 'success' && github.event_name == 'pull_request' && github.base_ref == 'dev'\n/);
   assert.match(ci, /if: steps.tree.outcome == 'success'\n\s+with:\n\s+name: full-tree-\$\{\{ steps.tree.outputs.tree \}\}/);
   assert.match(ci, /RELEASE_HEAD_REF: \$\{\{ github.event.pull_request.head.sha \}\}/);
-  assert.equal((ci.match(/run: npm run project:gates:release/g) ?? []).length, 2);
+  assert.equal((ci.match(/run: node --run project:gates:release/g) ?? []).length, 2);
   assert.match(ci, /RELEASE_BASE_REF: origin\/main\s+RELEASE_ALLOW_ANY_BRANCH: "true"/);
   assert.doesNotMatch(ci, /staging|preview|environment:|railway|wrangler/i);
 });
@@ -65,7 +67,10 @@ test('PR metadata skips gate runners without replacing or canceling real validat
   const ci = workflow('ci');
   // GitHub expressions return null for missing properties; optional chaining matches that.
   const startsWith = (value, prefix) => String(value ?? '').startsWith(prefix);
-  const evaluate = (expression, github) => new Function('github', 'always', 'startsWith', `return (${expression.replace(/\.(?=[a-z_])/g, '?.')})`)(github, () => true, startsWith);
+  const contains = (list, value) => list.includes(value);
+  const evaluate = (expression, github, needs = {}) => new Function('github', 'needs', 'always', 'startsWith', 'contains', 'fromJSON', `return (${expression.replace(/\.(?=[a-z_])/g, '?.')})`)(github, needs, () => true, startsWith, contains, JSON.parse);
+  // The parallel project gate jobs follow the same metadata rule, and run only for code scopes.
+  const gateJobs = ['project-gate', 'unit-tests'].map((id) => ci.split(`  ${id}:\n`)[1].match(/^    if: >-\n((?:      [^\n]+\n)+)/m)[1].trim());
   const group = (github) => ci.match(/^  group: (.+)$/m)[1]
     .replace(/\$\{\{ (.+?) \}\}/g, (_, expression) => evaluate(expression, github));
   const jobs = ['fast-gate', 'full-gate', 'release-candidate-gate'].map((id) => {
@@ -99,6 +104,12 @@ test('PR metadata skips gate runners without replacing or canceling real validat
       const skipped = draft || (['opened', 'reopened'].includes(action) && !Object.keys(override).length);
       assert.equal(evaluate(scopeCondition, github), !skipped, `${caseName}: PR Contract scheduling`);
       assert.equal(group(github) === group(real), !metadata, `${caseName}: cancellation group`);
+      for (const condition of gateJobs) {
+        for (const scope of ['product', 'docs']) {
+          const needs = { scope: { result: 'success', outputs: { scope } } };
+          assert.equal(evaluate(condition, github, needs), !metadata && scope === 'product', `${caseName}: ${scope} gate job scheduling`);
+        }
+      }
       for (const { id, condition, name } of jobs) {
         assert.equal(evaluate(condition, github), !metadata && (id !== 'release-candidate-gate' || base === 'main'), `${caseName}: ${id} scheduling`);
         const checkName = evaluate(name, github);
@@ -125,7 +136,21 @@ test('risk PRs run full once ci:full is added, and Full Gate requires it', () =>
   assert.equal(gate({ FULL_REQUIRED: 'true', FULL_RESULT: 'skipped' }), 1);
   assert.equal(gate({ FULL_REQUIRED: 'true', FULL_RESULT: 'success' }), 0);
   assert.equal(gate({ FULL_REQUIRED: 'false', FULL_RESULT: 'skipped' }), 0);
-  const fullCondition = ci.match(/npm run verify:full -- --skip-fast\s+id: full\s+if: ([^\n]+)/)[1];
+  // Code scopes require the parallel gate jobs, and a merge needs the full unit test suite.
+  const code = { FULL_REQUIRED: 'false', GATES_REQUIRED: 'true', GATES_RESULT: 'success', TESTS_RESULT: 'success' };
+  assert.equal(gate(code), 0);
+  assert.equal(gate({ ...code, TESTS_SELECTION: 'full' }), 0);
+  assert.equal(gate({ ...code, TESTS_SELECTION: 'affected' }), 1);
+  assert.equal(gate({ ...code, GATES_RESULT: 'failure' }), 1);
+  assert.equal(gate({ ...code, TESTS_RESULT: 'skipped' }), 1);
+  assert.equal(gate({ ...code, GATES_REQUIRED: 'false', GATES_RESULT: 'skipped', TESTS_RESULT: 'skipped' }), 0);
+  const affected = ci.match(/AFFECTED: \$\{\{ (.+) \}\}/)[1];
+  const select = (github) => new Function('github', `return (${affected.replace(/\.(?=[a-z_])/g, '?.')})`)(github);
+  assert.equal(select({ event_name: 'pull_request', base_ref: 'dev', event: { action: 'synchronize' } }), '--affected');
+  assert.equal(select({ event_name: 'pull_request', base_ref: 'dev', event: { action: 'labeled', label: { name: 'ci:full' } } }), '');
+  assert.equal(select({ event_name: 'pull_request', base_ref: 'main', event: { action: 'synchronize' } }), '');
+  assert.equal(select({ event_name: 'merge_group', event: {} }), '');
+  const fullCondition = ci.match(/node --run verify:full -- --skip-fast\s+id: full\s+if: ([^\n]+)/)[1];
   const releaseCondition = ci.match(/RELEASE_REQUIRED: \$\{\{ (.+) \}\}/)[1];
   const fastScript = ci.match(/name: Focused fast validation[\s\S]*?run: \|\n([\s\S]*?)      - run:/)[1];
   for (const [path, fullOnPr] of [
@@ -144,11 +169,11 @@ test('risk PRs run full once ci:full is added, and Full Gate requires it', () =>
       assert.equal(evaluate(fullCondition, { event_name: 'pull_request', event: { action } }, needs), false, `${path}: ${action}`);
     }
     assert.equal(evaluate(releaseCondition, labeled, needs), false);
-    const fast = spawnSync('bash', ['-e', '-c', `npm() { printf '%s' "$*"; };\n${fastScript}`], {
+    const fast = spawnSync('bash', ['-e', '-c', `node() { printf '%s' "$*"; };\n${fastScript}`], {
       encoding: 'utf8', env: { ...process.env, SCOPE: scope, GITHUB_EVENT_NAME: 'pull_request' }
     });
     assert.equal(fast.status, 0, fast.stderr);
-    assert.equal(fast.stdout, `run verify:fast -- --scope ${fullOnPr ? 'broad' : scope}`);
+    assert.equal(fast.stdout, `--run verify:fast -- --scope ${fullOnPr ? 'broad' : scope}`);
   }
   for (const [event_name, base_ref, release] of [['pull_request', 'main', true], ['pull_request', 'dev', false], ['merge_group', undefined, true]]) {
     const needs = { scope: { outputs: { scope: 'full' } } };
@@ -162,7 +187,7 @@ test('risk PRs run full once ci:full is added, and Full Gate requires it', () =>
 
 test('the scope step runs the base classifier and selects full without one', () => {
   const ci = workflow('ci');
-  const step = ci.match(/- id: scope\n[\s\S]*?run: \|\n([\s\S]*?)\n      - run: npm run pr:verify/)[1];
+  const step = ci.match(/- id: scope\n[\s\S]*?run: \|\n([\s\S]*?)\n      - run: node \.\/scripts\/automation\/check-pr-contract\.mjs/)[1];
   assert.match(ci, /BASE_SHA: \$\{\{ github.event.pull_request.base.sha \|\| github.event.merge_group.base_sha \}\}/);
   const d = mkdtempSync(path.join(tmpdir(), 'scope-step-'));
   try {
@@ -228,7 +253,7 @@ test('candidate dispatch validates trust before checkout and records success-onl
   assert.match(ci, /required: true\s+type: string/);
   assert.match(ci, /test "\$\(git rev-parse HEAD\)" = "\$REVISION"/);
   assert.match(ci, /git merge-base --is-ancestor "\$REVISION" origin\/dev/);
-  assert.match(ci, /run: npm run verify:fast\n\s+if: needs.reuse.outputs.run_id == ''\n\s+- run: npm run verify:full -- --skip-fast\n\s+if: needs.reuse.outputs.run_id == ''/);
+  assert.match(ci, /run: node --run verify:fast\n\s+if: needs.reuse.outputs.run_id == ''\n\s+- run: node --run verify:full -- --skip-fast\n\s+if: needs.reuse.outputs.run_id == ''/);
   // Only the lookup job reads Actions and PR data. It runs the dispatch commit, and every doubt runs Full.
   assert.match(ci, /^permissions:\n  contents: read\n\n/m);
   const lookup = ci.split('  reuse:\n')[1].split('\n  candidate:\n')[0];
@@ -253,7 +278,7 @@ test('candidate dispatch validates trust before checkout and records success-onl
   assert.equal(outputs({ GITHUB_REF: 'refs/heads/feature' }), 'run_id=\n');
   assert.equal(outputs({ REVISION: 'main' }), 'run_id=\n');
   assert.equal(outputs({}, 'return 1'), 'run_id=\n');
-  assert.ok(ci.indexOf('Record successful validation identity') > ci.indexOf('npm run verify:full'));
+  assert.ok(ci.indexOf('Record successful validation identity') > ci.indexOf('node --run verify:full'));
   assert.match(ci, /run_id: e.GITHUB_RUN_ID, run_attempt: e.GITHUB_RUN_ATTEMPT/);
   assert.match(ci, /name: ci-candidate-\$\{\{ inputs.revision \}\}/);
   assert.match(ci, /if-no-files-found: error\s+overwrite: true/);
@@ -265,15 +290,15 @@ test('candidate dispatch validates trust before checkout and records success-onl
 test('only PRs outside main run the light mode, and a candidate reuse runs the full mode again', () => {
   const ci = workflow('ci');
   const candidate = workflow('ci-candidate');
-  const fastGate = ci.split('  fast-gate:\n')[1].split(/\n  [\w-]+:\n/)[0];
-  const light = fastGate.match(/^    env:\n(?:      #[^\n]*\n)*      CI_LIGHT_MODE: \$\{\{ (.+) \}\}$/m)[1];
+  // The workflow env reaches the fast gate and the unit-tests job.
+  const light = ci.match(/^env:\n(?:  [^\n]*\n)*?  CI_LIGHT_MODE: \$\{\{ (.+) \}\}$/m)[1];
   const evaluate = (github) => new Function('github', `return (${light})`)(github);
   // Full mode is empty, so a test that checks truthiness also runs the full mode.
   assert.equal(evaluate({ event_name: 'pull_request', base_ref: 'dev' }), 'true');
   assert.equal(evaluate({ event_name: 'pull_request', base_ref: 'main' }), '');
   assert.equal(evaluate({ event_name: 'merge_group' }), '');
   // template/scripts/ci/full-mode-proof.test.mjs rejects any other setter or reader in .github.
-  assert.match(candidate, /- run: npm run verify:full -- --skip-fast\n\s+if: needs.reuse.outputs.run_id == ''\n(?:\s+#[^\n]*\n)?\s+- name: Run the light-mode tests in full mode\n\s+if: needs.reuse.outputs.run_id != ''\n\s+run: node scripts\/ci\/full-mode-proof.mjs\n/);
+  assert.match(candidate, /- run: node --run verify:full -- --skip-fast\n\s+if: needs.reuse.outputs.run_id == ''\n(?:\s+#[^\n]*\n)?\s+- name: Run the light-mode tests in full mode\n\s+if: needs.reuse.outputs.run_id != ''\n\s+run: node scripts\/ci\/full-mode-proof.mjs\n/);
   assert.ok(candidate.indexOf('full-mode-proof.mjs') < candidate.indexOf('Record successful validation identity'));
 });
 

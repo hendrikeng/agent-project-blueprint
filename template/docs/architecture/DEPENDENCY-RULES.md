@@ -22,5 +22,5 @@ A temporary exception names its owner, scope, reason, removal trigger, and expir
 
 ## Verification
 
-Run `npm run architecture:verify` when dependency rules or their covered imports change.
+Run `node --run architecture:verify` when dependency rules or their covered imports change.
 Update the rule and its check together. A review-only constraint must say so.

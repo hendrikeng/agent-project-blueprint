@@ -11,8 +11,8 @@
 - Merge strategy confirmed: merge commit, squash, or rebase
 - Project-specific deployment or test evidence, if applicable:
 - Included completed Plan-IDs:
-- Release notes generated: `npm run release:notes`
-- Release completeness verified: `npm run release:verify`
+- Release notes generated: `node --run release:notes`
+- Release completeness verified: `node --run release:verify`
 - Release-branch fixes mirrored to `dev`: yes / none
 - Required release gates passed: Fast Gate / Full Gate / Release Candidate Gate
 - Additional project-specific gates and results, if applicable:

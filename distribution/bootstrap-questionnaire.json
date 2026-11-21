@@ -2,9 +2,9 @@
   "schemaVersion": 1,
   "compatibility": {
     "mutationRuntime": "Node.js 24",
-    "existingProjectRequirement": "A package.json with an npm, pnpm, or yarn lockfile",
+    "existingProjectRequirement": "A package.json with a Bun, npm, pnpm, or yarn lockfile",
     "unsupportedProjectMode": "audit-only",
-    "newProjectPackageManagers": ["npm"]
+    "newProjectPackageManagers": ["pnpm", "bun", "npm"]
   },
   "sections": [
     {
@@ -43,8 +43,8 @@
       "id": "tooling",
       "title": "Tooling and quality gates",
       "questions": [
-        { "id": "node-package-manager", "prompt": "Use Node 24. Which npm, pnpm, or yarn install command, matching cache name, and matching lockfile apply?", "placeholders": ["NODE_VERSION", "CI_INSTALL_COMMAND", "PACKAGE_MANAGER_CACHE", "PACKAGE_MANAGER_LOCKFILE"], "inferFrom": ["package.json engines", ".nvmrc", "lockfiles", "CI workflow"], "default": "Node.js 24 with the detected package manager" },
-        { "id": "project-commands", "prompt": "Which real commands run lint, typecheck, unit tests, and production build?", "placeholders": ["PROJECT_LINT_COMMAND", "PROJECT_TYPECHECK_COMMAND", "PROJECT_UNIT_TEST_COMMAND", "PROJECT_BUILD_COMMAND"], "inferFrom": ["package.json scripts", "CI workflow"] },
+        { "id": "node-package-manager", "prompt": "Use Node 24 as the runtime. Which Bun, npm, pnpm, or yarn install command, matching cache name, and matching lockfile apply? New projects use pnpm with its supply-chain settings.", "placeholders": ["NODE_VERSION", "CI_INSTALL_COMMAND", "PACKAGE_MANAGER_CACHE", "PACKAGE_MANAGER_LOCKFILE"], "inferFrom": ["package.json engines", ".nvmrc", "lockfiles", "CI workflow"], "default": "Node.js 24 with pnpm: pnpm install --frozen-lockfile, cache pnpm, lockfile pnpm-lock.yaml" },
+        { "id": "project-commands", "prompt": "Which real commands run lint, typecheck, unit tests, affected unit tests for pull requests, and production build? If the test runner cannot select affected tests, repeat the unit test command.", "placeholders": ["PROJECT_LINT_COMMAND", "PROJECT_TYPECHECK_COMMAND", "PROJECT_UNIT_TEST_COMMAND", "PROJECT_AFFECTED_TEST_COMMAND", "PROJECT_BUILD_COMMAND"], "inferFrom": ["package.json scripts", "CI workflow"], "default": "pnpm lint (oxlint), pnpm typecheck (tsc from TypeScript 7, or vue-tsc for .vue files), pnpm test (vitest run), pnpm test --changed origin/dev, and pnpm build" },
         { "id": "quality-score", "prompt": "Score the six quality dimensions with evidence-based integer values and name two current gaps.", "placeholders": ["SCORE_DOMAIN_CORRECTNESS", "SCORE_CRITICAL_SAFETY", "SCORE_AUTHZ_BOUNDARIES", "SCORE_ARCH_BOUNDARIES", "SCORE_DOC_GOVERNANCE", "SCORE_CRITICAL_TESTS", "QUALITY_GAP_1", "QUALITY_GAP_2"], "inferFrom": ["tests", "docs", "architecture checks", "security controls"] }
       ]
     },

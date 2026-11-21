@@ -55,6 +55,7 @@ function replacementForToken(token) {
     PROJECT_LINT_COMMAND: 'node ./scripts/automation/check-harness-alignment.mjs',
     PROJECT_TYPECHECK_COMMAND: 'node ./scripts/automation/check-plan-metadata.mjs',
     PROJECT_UNIT_TEST_COMMAND: 'node ./scripts/automation/check-harness-alignment.mjs',
+    PROJECT_AFFECTED_TEST_COMMAND: 'node ./scripts/automation/check-harness-alignment.mjs',
     PROJECT_BUILD_COMMAND: 'node ./scripts/docs/check-governance.mjs',
     GENERATED_AT_UTC_ISO: `${today}T00:00:00.000Z`,
     CONFORMANCE_SOURCE: 'scripts/ci/run-template-smoke.mjs',

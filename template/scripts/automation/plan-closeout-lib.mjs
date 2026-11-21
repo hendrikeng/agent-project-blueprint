@@ -50,8 +50,11 @@ export const HIGH_RISK_STANDARD_CHANGE_SEGMENTS = [
 export const HIGH_RISK_STANDARD_CHANGE_FILES = [
   ".nvmrc",
   "package.json",
+  "bun.lock",
   "pnpm-lock.yaml",
   "pnpm-workspace.yaml",
+  ".oxlintrc.json",
+  ".oxfmtrc.json",
   "eslint.config.mjs",
   "prettier.config.mjs",
   "tsconfig.build.json",

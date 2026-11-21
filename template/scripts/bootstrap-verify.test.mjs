@@ -35,13 +35,13 @@ test('bootstrap runs full verification once and stops before cleanup after a fai
   await fs.mkdir(path.join(root, 'docs'));
   await fs.copyFile(new URL('./bootstrap-verify.sh', import.meta.url), path.join(root, 'scripts/bootstrap-verify.sh'));
   await fs.writeFile(path.join(root, 'scripts/check-template-placeholders.sh'), '#!/usr/bin/env bash\necho PLACEHOLDERS\n', { mode: 0o755 });
-  const expected = ['run context:compile', 'run eval:refresh', 'run verify:full', 'run bootstrap:cleanup'];
+  const expected = ['--run context:compile', '--run eval:refresh', '--run verify:full', '--run bootstrap:cleanup'];
   for (const failure of ['', ...expected]) {
-    const result = spawnSync('bash', ['-c', 'npm() { printf "NPM %s\\n" "$*"; [[ "$*" != "$FAIL_COMMAND" ]] || return 7; }; source "$1"', 'fixture', '../scripts/bootstrap-verify.sh'], {
+    const result = spawnSync('bash', ['-c', 'node() { printf "NODE %s\\n" "$*"; [[ "$*" != "$FAIL_COMMAND" ]] || return 7; }; source "$1"', 'fixture', '../scripts/bootstrap-verify.sh'], {
       cwd: path.join(root, 'docs'), encoding: 'utf8', env: { ...process.env, FAIL_COMMAND: failure }
     });
     assert.equal(result.status, failure ? 7 : 0, result.stderr);
-    assert.deepEqual(result.stdout.split('\n').filter(line => line.startsWith('NPM ')).map(line => line.slice(4)),
+    assert.deepEqual(result.stdout.split('\n').filter(line => line.startsWith('NODE ')).map(line => line.slice(5)),
       failure ? expected.slice(0, expected.indexOf(failure) + 1) : expected);
     assert.equal(result.stdout.includes('[bootstrap-verify] passed'), !failure);
   }

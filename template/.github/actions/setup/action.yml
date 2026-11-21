@@ -1,0 +1,36 @@
+name: Setup
+description: Node.js runtime, Bun, cached node_modules, and the frozen dependency install.
+
+# The caller checks out the repository first. ci-cache.yml seeds the cache on the integration branches,
+# so pull request runs restore it. Pull request caches are not shared with other pull requests.
+inputs:
+  node-version:
+    required: true
+  install-command:
+    required: true
+  package-manager:
+    required: true
+  lockfile:
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      with:
+        node-version: ${{ inputs.node-version }}
+        package-manager-cache: false
+    # Workflows run scripts with `node --run`, so only a Bun project needs Bun. Pin a version with bun-version.
+    - if: inputs.package-manager == 'bun'
+      uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+    - if: inputs.package-manager == 'pnpm' || inputs.package-manager == 'yarn'
+      shell: bash
+      run: corepack enable
+    # Cache node_modules, not only the package store. The install still runs and repairs a partial restore.
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: node_modules
+        key: node-modules-${{ runner.os }}-${{ runner.arch }}-node${{ inputs.node-version }}-${{ hashFiles(inputs.lockfile, 'package.json') }}
+        restore-keys: node-modules-${{ runner.os }}-${{ runner.arch }}-node${{ inputs.node-version }}-
+    - shell: bash
+      run: ${{ inputs.install-command }}

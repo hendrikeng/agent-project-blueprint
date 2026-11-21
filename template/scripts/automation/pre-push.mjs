@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-// Observe mode: runs the scoped fast gate before a feature-branch push, logs the result, and never blocks.
-// The log is local and untracked: <git dir>/verify-fast-pre-push.log, one tab-separated line per push.
-// VERIFY_PRE_PUSH=skip skips the gate and logs the skip.
+// Blocks a feature-branch push when format, lint, or typecheck fails. Target: less than 9 seconds.
+// It runs oxfmt and oxlint on the changed files (lint-changed.mjs) and the typecheck gate from project-gates.json.
+// It never runs AI reviews. The log is local and untracked: <git dir>/pre-push.log, one tab-separated line per push.
+// VERIFY_PRE_PUSH=skip skips the checks and logs the skip.
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -11,19 +12,10 @@ const git = (...args) => execFileSync('git', args, { encoding: 'utf8', stdio: ['
 
 export const featureBranch = (branch) => Boolean(branch) && !['HEAD', 'dev', 'main'].includes(branch) && !branch.startsWith('release/');
 
-// Returns the verify:fast scope, or null for branches that are not feature branches.
-export function prePushScope(branch, entries, classifyChanges) {
-  if (!featureBranch(branch)) return null;
-  const scope = classifyChanges(entries);
-  return ['product', 'docs', 'harness'].includes(scope) ? scope : 'broad';
-}
-
-function changedEntries(base, sha) {
-  const fields = execFileSync('git', ['diff', '--name-status', '-z', '--no-renames', `${base}...${sha}`], { encoding: 'utf8' }).split('\0');
-  const entries = [];
-  for (let index = 0; index + 1 < fields.length; index += 2) entries.push({ status: fields[index], path: fields[index + 1] });
-  return entries;
-}
+export const checks = [
+  ['node', './scripts/automation/lint-changed.mjs'],
+  ['node', './scripts/automation/check-project-gates.mjs', '--gate', 'typecheck', '--run']
+];
 
 // Git passes one `<local ref> <local sha> <remote ref> <remote sha>` line per pushed ref on stdin.
 export function pushedBranches(stdin) {
@@ -33,42 +25,39 @@ export function pushedBranches(stdin) {
     .map(([, sha, ref]) => ({ branch: ref.slice('refs/heads/'.length), sha }));
 }
 
-async function observe({ branch, sha }, head, logPath, classifyChanges) {
-  if (!featureBranch(branch)) return;
+// Returns true when the push can continue.
+function check({ branch, sha }, head, logPath) {
+  if (!featureBranch(branch)) return true;
   const started = Date.now();
-  let scope = '';
   let result;
-  try {
-    if (process.env.VERIFY_PRE_PUSH === 'skip') result = 'skipped';
-    else {
-      // verify:fast checks the working tree, so it proves only the checked-out commit without local changes.
-      if (sha !== head) result = 'skipped: not checked out';
-      else if (git('status', '--porcelain', '--untracked-files=no')) result = 'skipped: uncommitted changes';
-      else {
-        scope = prePushScope(branch, changedEntries(git('merge-base', sha, 'origin/dev'), sha), classifyChanges);
-        console.error(`[pre-push] observe mode: npm run verify:fast -- --scope ${scope} (never blocks the push)`);
-        // Git exports GIT_DIR and similar variables to hooks. Tests that create their own repositories must not see them.
-        const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !/^GIT_(?:DIR|WORK_TREE|INDEX_FILE|COMMON_DIR|OBJECT_DIRECTORY|ALTERNATE_OBJECT_DIRECTORIES|PREFIX|QUARANTINE_PATH)$/.test(key)));
-        const run = spawnSync('npm', ['run', 'verify:fast', '--', '--scope', scope], { env, stdio: ['ignore', 'inherit', 'inherit'], shell: process.platform === 'win32' });
-        result = run.status === 0 ? 'pass' : 'fail';
-      }
-    }
-  } catch (error) {
-    result = `error: ${error instanceof Error ? error.message.split('\n')[0] : String(error)}`;
+  if (process.env.VERIFY_PRE_PUSH === 'skip') result = 'skipped';
+  // The checks read the working tree, so they prove only the checked-out commit without local changes.
+  else if (sha !== head) result = 'skipped: not checked out';
+  else if (git('status', '--porcelain', '--untracked-files=no')) result = 'skipped: uncommitted changes';
+  else {
+    // Git exports GIT_DIR and similar variables to hooks. Tests that create their own repositories must not see them.
+    const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !/^GIT_(?:DIR|WORK_TREE|INDEX_FILE|COMMON_DIR|OBJECT_DIRECTORY|ALTERNATE_OBJECT_DIRECTORIES|PREFIX|QUARANTINE_PATH)$/.test(key)));
+    const failed = checks.find(([command, ...args]) => {
+      console.error(`[pre-push] ${command} ${args.join(' ')}`);
+      return spawnSync(command, args, { env, stdio: ['ignore', 'inherit', 'inherit'] }).status !== 0;
+    });
+    result = failed ? `fail: ${failed[1]}` : 'pass';
   }
   const seconds = ((Date.now() - started) / 1000).toFixed(1);
-  console.error(`[pre-push] ${branch}: verify:fast ${result} in ${seconds} s`);
-  fs.appendFileSync(logPath, `${new Date().toISOString()}\t${sha}\t${branch}\t${scope}\t${result}\t${seconds}\n`);
+  console.error(`[pre-push] ${branch}: ${result} in ${seconds} s`);
+  fs.appendFileSync(logPath, `${new Date().toISOString()}\t${sha}\t${branch}\t${result}\t${seconds}\n`);
+  return !result.startsWith('fail');
 }
 
-async function main() {
-  const logPath = path.resolve(git('rev-parse', '--git-dir'), 'verify-fast-pre-push.log');
+function main() {
+  const logPath = path.resolve(git('rev-parse', '--git-dir'), 'pre-push.log');
   const head = git('rev-parse', 'HEAD');
-  const { classifyChanges } = await import('../ci/classify-change.mjs');
-  for (const pushed of pushedBranches(fs.readFileSync(0, 'utf8'))) await observe(pushed, head, logPath, classifyChanges);
+  let ok = true;
+  for (const pushed of pushedBranches(fs.readFileSync(0, 'utf8'))) ok = check(pushed, head, logPath) && ok;
+  if (!ok) console.error('[pre-push] Fix the findings above and push again.');
+  return ok;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  // Observe mode always exits 0, also after an unexpected error.
-  main().catch(() => {}).finally(() => process.exit(0));
+  process.exit(main() ? 0 : 1);
 }

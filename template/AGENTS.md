@@ -73,3 +73,23 @@ See `docs/design-docs/GIT-SAFETY.md` and `docs/agent-hardening/TOOL_POLICY.md` f
 
 CI minutes cost money. Keep each PR a draft while you iterate, and push only after focused local checks.
 Before you mark a PR ready, add `ci:full`, or merge, read `docs/ops/automation/INTEROP_GITHUB.md#ci-cost-and-merge-path`.
+
+## CI Speed
+
+Target: a PR result in less than 2 minutes at the median. Never make CI faster by hiding failures.
+Do not add retries, longer timeouts, or skipped tests. If a check needs a retry, the check has a bug. Find the bug.
+The full suite runs before a change gets to `dev`. Affected-test selection only makes PR feedback smaller.
+Install with pnpm and keep its supply-chain settings in `pnpm-workspace.yaml`. Use oxfmt, oxlint, and `tsc` from TypeScript 7.
+For `.vue` files, keep `vue-tsc` and ESLint with the Vue plugin. TypeScript 7 and oxlint do not check Vue templates.
+For Python, use uv, Ruff, pytest-xdist, and pytest-randomly.
+Each CI job has a time budget (`timeout-minutes`). If a job is slower, find the cause. Do not raise the budget.
+The pre-push hook runs format, lint, and typecheck. Do not skip it with `--no-verify`.
+
+Tests share one process per worker (Vitest `isolate: false`) and run in random order. Each test file must clean up:
+
+- Restore mocks, spies, timers, and environment variables in `afterEach`.
+- Close servers, sockets, and database connections in `afterAll`.
+- Do not keep module-level state that a test changes. Reset it in `afterEach`.
+- Use a unique temporary directory, database, or key prefix for each file. Remove it after the file.
+
+If a test passes alone but fails in the suite, it depends on a leak. Fix the leak, not the order.

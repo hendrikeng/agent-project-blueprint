@@ -12,6 +12,7 @@ Source of Truth: This document.
 - Daily work: `docs/ops/automation/LITE_QUICKSTART.md`
 - Maintenance: `docs/ops/automation/OUTCOMES.md`
 - GitHub: `docs/ops/automation/INTEROP_GITHUB.md`
+- CI speed: `docs/ops/automation/CI_SPEED.md`
 - Releases: `docs/ops/releases/README.md`
 
 Populate actual recovery and ownership paths when the project has deployed services.

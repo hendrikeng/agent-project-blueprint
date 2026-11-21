@@ -1,10 +1,7 @@
 #!/usr/bin/env node
-import fs from 'node:fs/promises';
-import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { spawnHeavyShell } from './lib/agent-heavy.mjs';
 
-const rootDir = process.cwd();
 const PLAN_ID_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 function parseArgs(argv) {
@@ -46,7 +43,7 @@ function runCommand(command, dryRun) {
   }
   const options = { stdio: 'inherit', env: process.env };
   // Project gates and lint take their own slots; only the harness suite is heavy at this level.
-  const result = command === 'npm run harness:test'
+  const result = command === 'node --run harness:test'
     ? spawnHeavyShell(command, options)
     : spawnSync(command, { ...options, shell: true });
   if (result.error) {
@@ -83,8 +80,9 @@ function buildCommandSet(changedFiles, scope) {
     'node ./scripts/automation/check-path-policy.mjs',
     'node ./scripts/docs/repair-plan-references.mjs --check',
     'node ./scripts/docs/check-governance.mjs',
-    'npm run eval:integrity',
-    ...(['broad', 'harness'].includes(scope) ? ['npm run harness:test'] : []),
+    // node --run needs no package manager, so the harness works with pnpm, npm, yarn, and Bun.
+    'node --run eval:integrity',
+    ...(['broad', 'harness'].includes(scope) ? ['node --run harness:test'] : []),
     resolvedPlanMetadataCommand(),
     'node ./scripts/automation/check-plan-closeout.mjs',
     'node ./scripts/automation/check-harness-alignment.mjs',

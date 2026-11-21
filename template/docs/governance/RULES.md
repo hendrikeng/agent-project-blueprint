@@ -31,7 +31,7 @@ Exemption rationales require at least 24 characters. Deferred gates need an owne
 An exemption records a gap, not successful validation. Never use a fake success command.
 Fast checks validate context integrity, queue metadata, docs, and applicable project behavior.
 Full checks add the complete project gate set. They do not establish agent behavior or deployment success.
-Use `npm run eval:verify` before activating an agent configuration; ordinary checks use `npm run eval:integrity`.
+Use `node --run eval:verify` before activating an agent configuration; ordinary checks use `node --run eval:integrity`.
 CI scope and deployment proof live in `docs/ops/automation/INTEROP_GITHUB.md`.
 
 ## Scoped Plan Closeout

@@ -91,11 +91,11 @@ For planned work, use an explicit ledger entry when commit metadata and complete
 
 ## Verification
 
-- If release support is active, run `npm run project:gates:release` to execute all required release gates.
-- Use `npm run release:verify` for the focused range and evidence check.
-- Run `npm run release:notes` to draft release notes from completed plans and accepted mappings.
-- Run `npm run verify:full` before release promotion.
-- Run `npm run verify:deploy` for deployment health checks when a deployed target URL is available.
+- If release support is active, run `node --run project:gates:release` to execute all required release gates.
+- Use `node --run release:verify` for the focused range and evidence check.
+- Run `node --run release:notes` to draft release notes from completed plans and accepted mappings.
+- Run `node --run verify:full` before release promotion.
+- Run `node --run verify:deploy` for deployment health checks when a deployed target URL is available.
 - Keep release evidence in PRs, completed plans, release notes, or the evidence index so a future agent can audit what shipped.
 
 ## Mapping Rules

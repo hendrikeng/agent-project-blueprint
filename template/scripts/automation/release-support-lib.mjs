@@ -483,7 +483,7 @@ export function renderReleaseNotes(report) {
 
 export function usage(commandName) {
   return [
-    `Usage: npm run ${commandName} -- [--base <ref>] [--head <ref>] [--allow-any-branch]`,
+    `Usage: node --run ${commandName} -- [--base <ref>] [--head <ref>] [--allow-any-branch]`,
     "",
     "Defaults:",
     "- --base uses RELEASE_BASE_REF, then the latest vYYYY.MM.DD.N tag, then origin/main for the first release.",

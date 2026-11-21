@@ -15,4 +15,4 @@ Use `draft` while decisions remain open and `ready-for-promotion` when the next 
 Move the selected file to `docs/exec-plans/active/` when authorized implementation starts.
 Keep later work concise. Split independent deliverables only when ownership or validation needs separate execution.
 Close or remove obsolete proposals after checking code and current product state. Do not leave implemented checklists in this queue.
-Run `npm run plans:verify` and regenerate `npm run context:compile` after queue changes.
+Run `node --run plans:verify` and regenerate `node --run context:compile` after queue changes.

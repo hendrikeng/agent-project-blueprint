@@ -27,7 +27,7 @@ test('verify-fast scopes product and docs while distinguishing eval integrity fr
     for (const check of ['eval:integrity', 'compile-runtime-context.mjs --check', 'check-governance', 'check-plan-closeout', 'check-harness-alignment']) assert.ok(output.includes(check), check);
     assert.equal(output.includes('npm run eval:verify'), false);
     assert.equal(output.includes('check-quality-score'), false);
-    assert.equal(output.includes('npm run harness:test'), ['harness', 'broad'].includes(scope));
+    assert.equal(output.includes('node --run harness:test'), ['harness', 'broad'].includes(scope));
     assert.equal(output.includes('--profile fast --run'), ['product', 'broad'].includes(scope));
     assert.equal(output.includes('check-agent-hardening'), ['harness', 'broad'].includes(scope));
   }

@@ -24,15 +24,15 @@
   ],
   "validationPolicy": {
     "fastIteration": [
-      "npm run verify:fast"
+      "node --run verify:fast"
     ],
     "fullGate": [
-      "npm run verify:full"
+      "node --run verify:full"
     ],
     "repoHealth": [
-      "npm run quality:score"
+      "node --run quality:score"
     ],
-    "notes": "Project commands live in docs/governance/project-gates.json. Agent activation additionally requires npm run eval:verify."
+    "notes": "Project commands live in docs/governance/project-gates.json. Agent activation additionally requires node --run eval:verify."
   },
   "executionQuality": {
     "goalDrivenExecution": [

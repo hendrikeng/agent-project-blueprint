@@ -16,7 +16,7 @@ export const lightModeEnv = 'CI_LIGHT_MODE';
 export const lightModeTests = [];
 
 // Runs only the files above in full mode and writes a JUnit XML report to "$FULL_MODE_REPORT".
-// Example: 'npx vitest run --reporter=junit --outputFile="$FULL_MODE_REPORT" tests/load.test.ts'
+// Example: 'bunx vitest run --reporter=junit --outputFile="$FULL_MODE_REPORT" tests/load.test.ts'
 export const fullModeCommand = '';
 
 // Stops a hung command before the 40-minute candidate job limit. A stopped command fails the proof.
