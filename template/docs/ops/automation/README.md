@@ -20,7 +20,7 @@ Use risk-based reviews at the repository's delivery boundary. Do not create repe
 
 Update existing current-state facts and contracts. Remove resolved gaps and superseded limitations.
 Move the completed plan once. Keep one concise evidence record and link large artifacts.
-Run npm run context:compile and npm run docs:verify.
+Run node --run context:compile and node --run docs:verify.
 
 ## References
 

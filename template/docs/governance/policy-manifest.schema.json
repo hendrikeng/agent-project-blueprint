@@ -111,6 +111,34 @@
         "notes": {
           "type": "string",
           "minLength": 8
+        },
+        "closeoutPredictionRef": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Optional. Local verify:fast checks plan closeout against the merge base with this ref, for example origin/dev."
+        },
+        "changedFileObserve": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["bun-fmt", "oxfmt", "oxlint", "eslint", "ruff-format", "ruff-check"] },
+          "description": "Optional. Changed-file tools that report findings without failing, for example during a formatter adoption."
+        },
+        "changedFileNodeOptions": {
+          "type": "object",
+          "propertyNames": { "enum": ["oxfmt", "oxlint", "eslint"] },
+          "additionalProperties": { "type": "array", "items": { "type": "string", "pattern": "^--" } },
+          "description": "Optional. Node options for a changed-file tool, for example {\"eslint\": [\"--max-old-space-size=4096\"]}."
+        }
+      },
+      "additionalProperties": false
+    },
+    "releasePolicy": {
+      "type": "object",
+      "description": "Optional. Project-specific release rules.",
+      "properties": {
+        "requiredPullRequestFields": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Optional. More release PR body fields that need a real value, for example Preview URL."
         }
       },
       "additionalProperties": false

@@ -50,8 +50,11 @@ export const HIGH_RISK_STANDARD_CHANGE_SEGMENTS = [
 export const HIGH_RISK_STANDARD_CHANGE_FILES = [
   ".nvmrc",
   "package.json",
+  "bun.lock",
   "pnpm-lock.yaml",
   "pnpm-workspace.yaml",
+  ".oxlintrc.json",
+  ".oxfmtrc.json",
   "eslint.config.mjs",
   "prettier.config.mjs",
   "tsconfig.build.json",
@@ -199,7 +202,8 @@ export function assertProtectedBranchHasNoActivePlans(activePlanFiles, branchNam
   if (rejected.length) throw new Error(`${branchName} cannot retain new or changed active execution plans: ${rejected.join(', ')}`);
 }
 
-export function changedFilesFromNameStatus(output) {
+// Returns the paths that the head side of `git diff --name-status` changed. A deleted or renamed active plan is not a head path.
+export function changedHeadPathsFromNameStatus(output) {
   const text = String(output ?? '');
   const tokens = text.includes('\0') ? text.split('\0') : text.split('\n').filter(Boolean).flatMap(line => line.split('\t'));
   const changed = [];
@@ -218,6 +222,8 @@ export function changedFilesFromNameStatus(output) {
   return [...new Set(changed)];
 }
 
+export const changedFilesFromNameStatus = changedHeadPathsFromNameStatus;
+
 export function isCandidateDispatch(head, env, event) {
   const trustedRef = `refs/heads/${event?.repository?.default_branch}`;
   return env.GITHUB_ACTIONS === 'true' && env.GITHUB_EVENT_NAME === 'workflow_dispatch' &&
@@ -228,7 +234,15 @@ export function isCandidateDispatch(head, env, event) {
     env.GITHUB_WORKFLOW_REF === `${env.GITHUB_REPOSITORY}/.github/workflows/ci-candidate.yml@${trustedRef}`;
 }
 
-export function resolveCloseoutBranch(actualBranch, head, env, event = null) {
+// A pull_request merge commit that GitHub rebuilt after the base moved: the payload merge SHA and base SHA are stale.
+// It still belongs to the PR when its second parent is the PR head and its first parent contains the payload base.
+export function rebuiltPullRequestMerge(head, event, parents, isAncestor = (ancestor, commit) => ancestor === commit) {
+  const pr = event?.pull_request;
+  return Boolean(pr) && pr.merge_commit_sha !== head && parents.length === 2 && /^[a-f0-9]{40}$/.test(parents[1]) &&
+    parents[1] === pr.head?.sha && Boolean(pr.base?.sha) && isAncestor(pr.base.sha, parents[0]);
+}
+
+export function resolveCloseoutBranch(actualBranch, head, env, event = null, parents = [], isAncestor = undefined) {
   if (actualBranch && env.GITHUB_ACTIONS !== 'true') return actualBranch;
   // The caller also proves origin/dev ancestry before accepting this selected checkout.
   if (!actualBranch && isCandidateDispatch(head, env, event)) return 'dev';
@@ -236,8 +250,10 @@ export function resolveCloseoutBranch(actualBranch, head, env, event = null) {
     throw new Error('Detached closeout requires GitHub event context matching the checked-out commit.');
   }
   let branch;
+  // GitHub computes the test merge asynchronously, so the payload merge SHA can be stale.
+  const boundMerge = event?.pull_request?.merge_commit_sha === head || rebuiltPullRequestMerge(head, event, parents, isAncestor);
   if (env.GITHUB_EVENT_NAME === 'pull_request' && env.GITHUB_REF === `refs/pull/${event?.number}/merge` &&
-      event?.pull_request?.merge_commit_sha === head) {
+      boundMerge) {
     branch = event.pull_request.base?.ref;
   } else if (env.GITHUB_EVENT_NAME === 'push' && event?.after === head && event?.ref === env.GITHUB_REF) {
     branch = event.ref.startsWith('refs/heads/') ? event.ref.slice('refs/heads/'.length) : null;
@@ -261,9 +277,11 @@ export function isLocalFeatureIteration(actualBranch, env, mergeHeads) {
     !env.PLAN_CLOSEOUT_BASE_REF && env.GITHUB_ACTIONS !== 'true' && mergeHeads.length === 0;
 }
 
-export function resolveCloseoutBase({ head, parents, mergeHeads, event = null, eventName, explicitBase }) {
+export function resolveCloseoutBase({ head, parents, mergeHeads, event = null, eventName, explicitBase, isAncestor = undefined }) {
   if (mergeHeads.length > 1) throw new Error('Ambiguous closeout baseline: multiple pending merge heads.');
+  // A rebuilt merge diffs against its first parent: that is the moved base, so other PRs stay out of the diff.
   const base = explicitBase || (mergeHeads.length ? head :
+    eventName === 'pull_request' && rebuiltPullRequestMerge(head, event, parents, isAncestor) ? parents[0] :
     eventName === 'pull_request' ? event?.pull_request?.base?.sha :
     eventName === 'merge_group' ? event?.merge_group?.base_sha :
     eventName === 'push' ? event?.before : parents[0]);

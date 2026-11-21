@@ -11,8 +11,11 @@ const RELEASE_CONTRACT_MARKERS = [
   "## Release Contract",
   "- Release ID:",
   ...RELEASE_COMMAND_FIELDS.map(([label]) => label),
-  "- Required release gates passed: Fast Gate / Full Gate / Release Candidate Gate",
+  "- Required release gates: Fast Gate / Full Gate / Release Candidate Gate",
 ];
+// A body marker cannot prove that gates passed. Release PRs opened with the older pass claim still validate.
+const LEGACY_RELEASE_GATES = "- Required release gates passed:";
+const RELEASE_REQUIRED_FIELDS = ["Included completed Plan-IDs", "Rollback or fix-forward plan"];
 
 const SLICE_CONTRACT_MARKERS = [
   "## Slice Contract",
@@ -62,8 +65,23 @@ function invalidReleaseCommandFields(body) {
   return RELEASE_COMMAND_FIELDS.filter(([label, script]) => {
     const line = lines.find((candidate) => candidate.startsWith(label));
     const command = line?.slice(label.length).trim().replace(/^`|`$/g, "") ?? "";
-    return !new RegExp(`^(?:npm run|pnpm(?: run)?|yarn(?: run)?|bun run) ${script}$`).test(command);
+    return !new RegExp(`^(?:npm run|pnpm(?: run)?|yarn(?: run)?|bun run|node --run) ${script}$`).test(command);
   });
+}
+
+function fieldValue(body, label) {
+  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = normalizeText(body).match(new RegExp(`^- ${escaped}:[ \\t]*(.*)$`, "m"));
+  return String(match?.[1] ?? "").trim().replace(/^`|`$/g, "");
+}
+
+function requireField(findings, body, label, expected = "") {
+  const value = fieldValue(body, label);
+  if (!value || value.includes("YYYY.MM.DD.N") || /^(?:\.{3}|…|TBD\b)/i.test(value)) {
+    findings.push(`release PR body field '${label}' must contain a non-template value.`);
+  } else if (expected && value !== expected) {
+    findings.push(`release PR body field '${label}' must be '${expected}'; got '${value}'.`);
+  }
 }
 
 function branchClass(headRef) {
@@ -79,7 +97,8 @@ export function localVerificationWarnings(body) {
   return value ? [] : ['Local verification is missing or empty. Write the command, SHA, and result, or "none".'];
 }
 
-export function validatePrContract({ headRef, baseRef, title, body }) {
+// extraReleaseFields: optional, from releasePolicy.requiredPullRequestFields in docs/governance/policy-manifest.json.
+export function validatePrContract({ headRef, baseRef, title, body, extraReleaseFields = [] }) {
   const head = String(headRef ?? "").trim();
   const base = String(baseRef ?? "").trim();
   const normalizedTitle = String(title ?? "").trim();
@@ -106,13 +125,20 @@ export function validatePrContract({ headRef, baseRef, title, body }) {
       findings.push(`release PR title must be '${expectedTitle}'; got '${normalizedTitle || '(empty)'}'.`);
     }
 
-    const missing = missingMarkers(normalizedBody, RELEASE_CONTRACT_MARKERS);
+    const missing = missingMarkers(
+      normalizedBody.replace(LEGACY_RELEASE_GATES, "- Required release gates:"),
+      RELEASE_CONTRACT_MARKERS,
+    );
     for (const marker of missing) {
       findings.push(`release PR body is missing required marker: ${marker}`);
     }
     for (const [label, script] of invalidReleaseCommandFields(normalizedBody)) {
       findings.push(`release PR body field '${label}' must reference ${script}.`);
     }
+    requireField(findings, normalizedBody, "Release ID", releaseVersion);
+    requireField(findings, normalizedBody, "Release branch", head);
+    requireField(findings, normalizedBody, "Target branch", base);
+    for (const label of [...RELEASE_REQUIRED_FIELDS, ...extraReleaseFields]) requireField(findings, normalizedBody, label);
 
     return findings;
   }

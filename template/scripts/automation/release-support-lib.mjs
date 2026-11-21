@@ -176,12 +176,22 @@ function changedFiles(base, head) {
   return splitLines(git(["diff", "--name-only", `${base}..${head}`]));
 }
 
-function commitHashes(base, head) {
+function excludedRefs(base, head) {
   const publishedSources = splitLines(gitMaybe(["tag", "--merged", base, "--list", "v[0-9]*"]))
     .filter(tag => RELEASE_TAG_REGEX.test(tag) && isValidReleaseVersion(tag.slice(1)))
     .map(tag => `source-${tag}`)
     .filter(source => refExists(source) && gitMaybe(["rev-list", "--count", `${head}..${source}`]) === "0");
-  return splitLines(git(["rev-list", "--reverse", head, "--not", base, ...publishedSources]));
+  return [base, ...publishedSources];
+}
+
+// The notes need no token, so each entry uses the commit author name and the squash subject.
+function changelogEntries(head, excluded) {
+  return splitLines(git(["log", "--first-parent", "--reverse", "--format=%an%x00%s", head, "--not", ...excluded]))
+    .map((line) => {
+      const [author, subject] = line.split("\0");
+      const pr = subject.match(/^(.*?)\s*\(#(\d+)\)$/);
+      return { author, subject: pr ? pr[1] : subject, pr: pr ? pr[2] : "" };
+    });
 }
 
 function commitDetails(hash) {
@@ -300,6 +310,7 @@ export function analyzeReleaseRange(argv = process.argv.slice(2)) {
       plans: [],
       files: [],
       commits: [],
+      changelog: [],
       migrationFiles: [],
       configFiles: [],
       mappedStandardChanges: [],
@@ -307,7 +318,9 @@ export function analyzeReleaseRange(argv = process.argv.slice(2)) {
   }
 
   const files = changedFiles(base, head);
-  const commits = commitHashes(base, head).map(commitDetails);
+  const excluded = excludedRefs(base, head);
+  const commits = splitLines(git(["rev-list", "--reverse", head, "--not", ...excluded])).map(commitDetails);
+  const changelog = changelogEntries(head, excluded);
   const completedPlanFiles = files.filter(isCompletedPlanPath);
   const releaseCommitMappingsForHead = releaseCommitMappings(head);
   const mappedStandardChanges = [];
@@ -404,6 +417,7 @@ export function analyzeReleaseRange(argv = process.argv.slice(2)) {
     head,
     files,
     commits,
+    changelog,
     plans,
     findings,
     warnings,
@@ -413,6 +427,16 @@ export function analyzeReleaseRange(argv = process.argv.slice(2)) {
   };
 }
 
+// Commit subjects, author names, and mapping rationales are contributor text in public notes.
+// No Markdown links or images, no HTML or character references, no mentions, and no bare-URL autolinks.
+export function markdownText(value) {
+  return String(value)
+    .replace(/[\\`*_{}[\]<>()#+!|~&]/g, "\\$&")
+    .replace(/@/g, "@\u200b")
+    .replace(/:\/\//g, ":\u200b//")
+    .replace(/www\./gi, (match) => `${match.slice(0, 3)}\u200b.`);
+}
+
 export function renderReleaseNotes(report) {
   const lines = [];
   lines.push("# Release Notes");
@@ -420,6 +444,16 @@ export function renderReleaseNotes(report) {
   lines.push(`Base: \`${report.base}\``);
   lines.push(`Head: \`${report.head}\``);
   if (report.branch) lines.push(`Branch: \`${report.branch}\``);
+  lines.push("");
+  lines.push("## What's Changed");
+  lines.push("");
+  if (report.changelog.length > 0) {
+    for (const entry of report.changelog) {
+      lines.push(`- ${markdownText(entry.subject)} by ${markdownText(entry.author)}${entry.pr ? ` in #${entry.pr}` : ""}`);
+    }
+  } else {
+    lines.push("- none identified automatically");
+  }
   lines.push("");
   if (report.warnings.length > 0) {
     lines.push("## Release Mapping Warnings");
@@ -439,8 +473,8 @@ export function renderReleaseNotes(report) {
   lines.push("");
   if (report.mappedStandardChanges.length > 0) {
     for (const change of report.mappedStandardChanges) {
-      lines.push(`- \`${change.hash.slice(0, 12)}\` - ${change.title}`);
-      lines.push(`  - Rationale: ${change.rationale}`);
+      lines.push(`- \`${change.hash.slice(0, 12)}\` - ${markdownText(change.title)}`);
+      lines.push(`  - Rationale: ${markdownText(change.rationale)}`);
     }
   } else {
     lines.push("- none identified automatically");
@@ -460,12 +494,12 @@ export function renderReleaseNotes(report) {
     lines.push("- none identified");
   } else {
     for (const plan of report.plans) {
-      lines.push(`- \`${plan.planId}\` - ${plan.title}`);
+      lines.push(`- \`${plan.planId}\` - ${markdownText(plan.title)}`);
       lines.push(`  - Completed plan: \`${plan.filePath}\``);
       lines.push(`  - Evidence: \`${plan.doneEvidence || "missing"}\``);
       if (plan.evidenceBullets.length > 0) {
         for (const bullet of plan.evidenceBullets.slice(0, 4)) {
-          lines.push(`  - ${bullet}`);
+          lines.push(`  - ${markdownText(bullet)}`);
         }
       }
     }
@@ -483,7 +517,7 @@ export function renderReleaseNotes(report) {
 
 export function usage(commandName) {
   return [
-    `Usage: npm run ${commandName} -- [--base <ref>] [--head <ref>] [--allow-any-branch]`,
+    `Usage: node --run ${commandName} -- [--base <ref>] [--head <ref>] [--allow-any-branch]`,
     "",
     "Defaults:",
     "- --base uses RELEASE_BASE_REF, then the latest vYYYY.MM.DD.N tag, then origin/main for the first release.",

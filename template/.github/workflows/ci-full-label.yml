@@ -13,7 +13,7 @@ jobs:
   remove:
     name: Remove ci:full
     if: contains(github.event.pull_request.labels.*.name, 'ci:full')
-    runs-on: ubuntu-latest
+    runs-on: ubicloud-standard-2
     timeout-minutes: 2
     steps:
       - env:

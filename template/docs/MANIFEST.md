@@ -44,6 +44,7 @@ Use `docs/README.md` for navigation, usage, and authoring guidance.
 - `docs/ops/automation/LITE_QUICKSTART.md`
 - `docs/ops/automation/OUTCOMES.md`
 - `docs/ops/automation/INTEROP_GITHUB.md`
+- `docs/ops/automation/CI_SPEED.md`
 - `docs/ops/releases/`
 - `docs/ops/releases/release-mapping.md`
 - `docs/product-specs/`
@@ -108,6 +109,7 @@ Use `docs/README.md` for navigation, usage, and authoring guidance.
 - `docs/ops/automation/LITE_QUICKSTART.md`
 - `docs/ops/automation/OUTCOMES.md`
 - `docs/ops/automation/INTEROP_GITHUB.md`
+- `docs/ops/automation/CI_SPEED.md`
 - `docs/ops/releases/README.md`
 - `docs/ops/releases/release-mapping.md`
 - `docs/product-specs/README.md`

@@ -24,6 +24,8 @@ concurrency:
 env:
   NODE_VERSION: "{{NODE_VERSION}}"
   CI_INSTALL_COMMAND: "{{CI_INSTALL_COMMAND}}"
+  PACKAGE_MANAGER_CACHE: "{{PACKAGE_MANAGER_CACHE}}"
+  PACKAGE_MANAGER_LOCKFILE: "{{PACKAGE_MANAGER_LOCKFILE}}"
 
 jobs:
   # Only this job reads Actions and PR data. It runs the lookup of the dispatch commit, never revision code.
@@ -32,7 +34,7 @@ jobs:
     if: ${{ !inputs.full }}
     # A failed lookup runs Full and must not fail the candidate run.
     continue-on-error: true
-    runs-on: ubuntu-latest
+    runs-on: ubicloud-standard-2
     timeout-minutes: 5
     permissions:
       contents: read
@@ -45,7 +47,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           package-manager-cache: false
@@ -66,7 +68,7 @@ jobs:
     needs: reuse
     # A skipped or failed lookup runs Full.
     if: ${{ !cancelled() }}
-    runs-on: ubuntu-latest
+    runs-on: ubicloud-standard-2
     timeout-minutes: 40
     steps:
       - name: Validate trusted dispatch
@@ -81,6 +83,7 @@ jobs:
         with:
           ref: ${{ inputs.revision }}
           fetch-depth: 0
+          filter: blob:none
       - name: Require the exact dev ancestor
         env:
           REVISION: ${{ inputs.revision }}
@@ -88,17 +91,17 @@ jobs:
           git fetch origin dev
           test "$(git rev-parse HEAD)" = "$REVISION"
           git merge-base --is-ancestor "$REVISION" origin/dev
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      - uses: ./.github/actions/setup
         with:
           node-version: ${{ env.NODE_VERSION }}
-          package-manager-cache: false
-      - run: corepack enable
-      - run: ${{ env.CI_INSTALL_COMMAND }}
-      - run: npm run eval:refresh && git diff --exit-code -- docs/generated/evals-report.json
+          install-command: ${{ env.CI_INSTALL_COMMAND }}
+          package-manager: ${{ env.PACKAGE_MANAGER_CACHE }}
+          lockfile: ${{ env.PACKAGE_MANAGER_LOCKFILE }}
+      - run: node --run eval:refresh && git diff --exit-code -- docs/generated/evals-report.json
       # Add date-dependent gates, such as a dependency audit, here: a reused Full does not run them again.
-      - run: npm run verify:fast
+      - run: node --run verify:fast
         if: needs.reuse.outputs.run_id == ''
-      - run: npm run verify:full -- --skip-fast
+      - run: node --run verify:full -- --skip-fast
         if: needs.reuse.outputs.run_id == ''
       # The reused PR Full ran with CI_LIGHT_MODE. Run only the light-mode tests again, in full mode.
       - name: Run the light-mode tests in full mode

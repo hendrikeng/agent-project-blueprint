@@ -420,8 +420,10 @@ test('configured baseline migration requires explicit package and project-contra
   const sync = (...args) => execute('harness-sync.mjs', [...args, '--target', target]);
   assert.equal(sync('install').status, 0);
   const packet = await decisions();
+  // The old revision has no affected-test decision. The migration adds it before the update.
+  const { PROJECT_AFFECTED_TEST_COMMAND: affectedTests, ...oldValues } = packet.values;
   const packetPath = path.join(target, 'decisions.json');
-  await fs.writeFile(packetPath, JSON.stringify(packet));
+  await fs.writeFile(packetPath, JSON.stringify({ ...packet, values: oldValues }));
   const configured = execute('bootstrap-configure.mjs', ['--target', target, '--decisions', packetPath]);
   assert.equal(configured.status, 0, configured.stderr);
   const targetRun = (script, args = []) => spawnSync(process.execPath, [path.join(target, 'scripts', script), ...args],
@@ -447,6 +449,7 @@ test('configured baseline migration requires explicit package and project-contra
   const advisory = sync('drift', '--json', 'true');
   assert.equal(advisory.status, 2);
   assert.equal(JSON.parse(advisory.stdout).projectUpdatesAvailable.includes('docs/governance/doc-checks.config.json'), true);
+  await fs.writeFile(packetPath, JSON.stringify({ ...packet, values: { ...oldValues, PROJECT_AFFECTED_TEST_COMMAND: affectedTests } }));
   const updated = sync('update');
   assert.equal(updated.status, 0, updated.stderr);
   for (const [relative, content] of before) assert.equal(await fs.readFile(path.join(target, relative), 'utf8'), content);

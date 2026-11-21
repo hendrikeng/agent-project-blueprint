@@ -25,7 +25,7 @@ Planning-only requests do not authorize implementation. An implementation reques
 5. Update current-state and affected contracts in place. Remove resolved gaps and obsolete limitations.
    Before archiving, put enduring decisions in their current canonical owner with source or decision anchors.
 6. Move the plan to docs/exec-plans/completed/ and retain concise validation evidence.
-7. Run npm run context:compile. Finished plans must disappear from the unfinished-work index.
+7. Run node --run context:compile. Finished plans must disappear from the unfinished-work index.
 
 Do not create a future file, active file, session log, and evidence narrative for the same small change.
 If implementation is complete but checks or review remain pending, retain the active plan in `validation` or `in-review`.

@@ -29,4 +29,4 @@ Completed work is excluded. If a shipped feature remains in the queue, reconcile
 
 Use the active plan's single continuation section for decisions, approvals, changed paths, validation, blockers, and next action.
 Replace obsolete product-state statements and remove resolved gaps. Move completed plans out of the active queue.
-Regenerate with `npm run context:compile`. Verify without writes with `npm run context:check`.
+Regenerate with `node --run context:compile`. Verify without writes with `node --run context:check`.

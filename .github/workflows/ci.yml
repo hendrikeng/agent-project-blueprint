@@ -18,7 +18,8 @@ jobs:
   harness:
     if: ${{ !github.event.pull_request.draft }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    # Time budget: the slowest measured job ran for 2 minutes (2026-11). A longer job fails.
+    timeout-minutes: 5
     strategy:
       fail-fast: false
       matrix:
@@ -34,18 +35,19 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
+          filter: blob:none
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ matrix.node-version }}
           package-manager-cache: false
 
       - name: Root Harness Tests
-        run: npm run test:root
+        run: node --run test:root
 
       - name: Template Consumer Smoke
-        run: npm run test:template-smoke
+        run: node --run test:template-smoke
 
       - name: Golden Adoption Workflow
         if: matrix.os == 'ubuntu-latest' && matrix.node-version == '24.x'
-        run: npm run test:golden-adopted-repo
+        run: node --run test:golden-adopted-repo

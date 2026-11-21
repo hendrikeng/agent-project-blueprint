@@ -53,6 +53,7 @@ The goal is not to fill blanks mechanically. Each replacement should make the ad
 - `{{PROJECT_LINT_COMMAND}}`
 - `{{PROJECT_TYPECHECK_COMMAND}}`
 - `{{PROJECT_UNIT_TEST_COMMAND}}`
+- `{{PROJECT_AFFECTED_TEST_COMMAND}}` (pull requests run only the tests that the diff can reach. Use the unit test command if the runner has no selection.)
 - `{{PROJECT_BUILD_COMMAND}}`
 
 ## Ownership/Approval Placeholders
@@ -90,9 +91,9 @@ If a domain does not use billing/credits/payments, keep the placeholder explicit
 - `{{CODEOWNERS_DEFAULT_TEAM}}`: `@your-org/platform-engineering`
 - `{{CODEOWNERS_SECURITY_TEAM}}`: `@your-org/security-ops`
 - `{{NODE_VERSION}}`: `24`
-- `{{CI_INSTALL_COMMAND}}`: `npm ci`, `pnpm install --frozen-lockfile`, or `yarn install --immutable`
-- `{{PACKAGE_MANAGER_CACHE}}`: `npm`, `pnpm`, or `yarn`
-- `{{PACKAGE_MANAGER_LOCKFILE}}`: `package-lock.json`, `pnpm-lock.yaml`, or `yarn.lock`
+- `{{CI_INSTALL_COMMAND}}`: `pnpm install --frozen-lockfile` (default), `bun install --frozen-lockfile`, `npm ci`, or `yarn install --immutable`
+- `{{PACKAGE_MANAGER_CACHE}}`: `pnpm` (default), `bun`, `npm`, or `yarn`
+- `{{PACKAGE_MANAGER_LOCKFILE}}`: `pnpm-lock.yaml` (default), `bun.lock`, `package-lock.json`, or `yarn.lock`
 
 ## Validation Command
 
@@ -108,4 +109,4 @@ Then run:
 ./scripts/bootstrap-verify.sh
 ```
 
-This is a bootstrap-only guide. `bootstrap-verify.sh` runs `npm run bootstrap:cleanup` after verification; that final cleanup removes this file and `package.scripts.fragment.json` once placeholders are clear and package scripts have been merged.
+This is a bootstrap-only guide. `bootstrap-verify.sh` runs `node --run bootstrap:cleanup` after verification; that final cleanup removes this file and `package.scripts.fragment.json` once placeholders are clear and package scripts have been merged.

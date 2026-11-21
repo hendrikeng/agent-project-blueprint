@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import process from 'node:process';
 
 const commands = [
-  ['npm', ['run', 'verify:full']],
+  ['node', ['./scripts/automation/verify-full.mjs']],
   ['node', ['./scripts/automation/check-project-gates.mjs', '--profile', 'deploy', '--run']]
 ];
 

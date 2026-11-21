@@ -12,6 +12,7 @@
     ".gitignore",
     "*.md",
     ".github/CODEOWNERS",
+    ".github/actions/**",
     ".github/workflows/**",
     ".githooks/**",
     "scripts/ci/**",

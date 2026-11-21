@@ -20,4 +20,4 @@ Read `docs/architecture/DEPENDENCY-RULES.md` only when imports or module ownersh
 ## Verification
 
 Declare real import checks in `docs/governance/architecture-rules.json`.
-Run npm run architecture:verify for boundary changes. An empty configuration means not enforced.
+Run node --run architecture:verify for boundary changes. An empty configuration means not enforced.

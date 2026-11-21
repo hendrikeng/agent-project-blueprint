@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import process from "node:process";
 import {
   implementationMergeCommits,
@@ -7,8 +8,18 @@ import {
   validatePrContract,
 } from "./pr-contract-lib.mjs";
 
+// Optional: releasePolicy.requiredPullRequestFields in docs/governance/policy-manifest.json, for example ["Preview URL"].
+function extraReleaseFields() {
+  try {
+    const fields = JSON.parse(readFileSync("docs/governance/policy-manifest.json", "utf8")).releasePolicy?.requiredPullRequestFields;
+    return Array.isArray(fields) ? fields.filter((field) => typeof field === "string").map((field) => field.trim()).filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+}
+
 try {
-  const contract = readPrContractFromEnv();
+  const contract = { ...readPrContractFromEnv(), extraReleaseFields: extraReleaseFields() };
 
   if (!contract.headRef && !contract.baseRef) {
     console.log("pr:verify skipped outside pull_request context.");

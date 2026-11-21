@@ -71,6 +71,7 @@
     "docs/agent-hardening/evals.config.json",
     "docs/ops/automation/OUTCOMES.md",
     "docs/ops/automation/INTEROP_GITHUB.md",
+    "docs/ops/automation/CI_SPEED.md",
     "docs/ops/automation/LITE_QUICKSTART.md",
     "VISION.md",
     "docs/agent-hardening/AGENT_LOOP.md"
@@ -165,6 +166,7 @@
       "docs/ops/automation/LITE_QUICKSTART.md",
       "docs/ops/automation/OUTCOMES.md",
       "docs/ops/automation/INTEROP_GITHUB.md",
+      "docs/ops/automation/CI_SPEED.md",
       "docs/ops/releases/README.md"
     ],
     "docs/ops/releases/README.md": [
