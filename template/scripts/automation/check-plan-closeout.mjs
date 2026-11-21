@@ -40,7 +40,7 @@ try {
   if (isCandidateDispatch(head, process.env, event)) {
     gitBytes(['merge-base', '--is-ancestor', head, 'origin/dev']);
   }
-  const branchName = resolveCloseoutBranch(actualBranch, head, process.env, event);
+  const branchName = resolveCloseoutBranch(actualBranch, head, process.env, event, parents);
   const changeBranchName = event && process.env.GITHUB_EVENT_NAME === 'pull_request'
     ? event.pull_request.head?.ref || branchName : branchName;
   const mergeHeadPath = gitOutput(['rev-parse', '--git-path', 'MERGE_HEAD']);

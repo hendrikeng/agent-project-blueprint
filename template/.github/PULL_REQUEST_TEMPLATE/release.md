@@ -14,7 +14,7 @@
 - Release notes generated: `node --run release:notes`
 - Release completeness verified: `node --run release:verify`
 - Release-branch fixes mirrored to `dev`: yes / none
-- Required release gates passed: Fast Gate / Full Gate / Release Candidate Gate
+- Required release gates: Fast Gate / Full Gate / Release Candidate Gate
 - Additional project-specific gates and results, if applicable:
 - Database migrations, backfills, or data repairs:
 - Environment or configuration changes:

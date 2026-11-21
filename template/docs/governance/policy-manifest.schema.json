@@ -125,6 +125,18 @@
       },
       "additionalProperties": false
     },
+    "releasePolicy": {
+      "type": "object",
+      "description": "Optional. Project-specific release rules.",
+      "properties": {
+        "requiredPullRequestFields": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Optional. More release PR body fields that need a real value, for example Preview URL."
+        }
+      },
+      "additionalProperties": false
+    },
     "executionQuality": {
       "type": "object",
       "required": [

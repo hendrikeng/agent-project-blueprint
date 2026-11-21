@@ -66,6 +66,31 @@ test('release analysis excludes already-promoted source commits after a squash',
   assert.match(missingReport.findings.join('\n'), /previous-release.*no completed plan/);
 });
 
+test('release default base moves to origin/main when main moved past the latest release tag', async (t) => {
+  const rootDir = await createTemplateRepo(t);
+  const git = (...args) => execFileSync('git', args, { cwd: rootDir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  const analyze = () => {
+    const result = runNode('--input-type=module', ['-e',
+      'import {analyzeReleaseRange} from "./scripts/automation/release-support-lib.mjs"; console.log(JSON.stringify(analyzeReleaseRange(["--allow-any-branch"])));'
+    ], rootDir, { RELEASE_BASE_REF: '', RELEASE_HEAD_REF: 'HEAD', GITHUB_HEAD_REF: '' });
+    assert.equal(result.status, 0, String(result.stderr));
+    return JSON.parse(result.stdout);
+  };
+  git('tag', 'v2026.07.15.1');
+  git('update-ref', 'refs/remotes/origin/main', 'HEAD');
+  await writeFile(path.join(rootDir, 'withdrawn.md'), 'withdrawn\n');
+  git('add', 'withdrawn.md');
+  git('commit', '-m', 'docs: withdrawn release');
+  assert.equal(analyze().base, 'v2026.07.15.1');
+  git('update-ref', 'refs/remotes/origin/main', 'HEAD');
+  await writeFile(path.join(rootDir, 'next.md'), 'next\n');
+  git('add', 'next.md');
+  git('commit', '-m', 'docs: next');
+  const report = analyze();
+  assert.equal(report.base, 'origin/main');
+  assert.deepEqual(report.files, ['next.md']);
+});
+
 test('a plan-free release accepts mapped small fixes while unmapped code still blocks', async (t) => {
   const rootDir = await createTemplateRepo(t);
   const git = (...args) => execFileSync('git', args, { cwd: rootDir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
@@ -188,6 +213,29 @@ Recovery regression passed.
   git('add', evidence);
   git('commit', '-m', 'fixture: symlink receipt\n\nPlan-ID: recovery');
   assert.match(analyze().findings.join('\n'), /nonempty changed regular Done-Evidence/);
+});
+
+test('release changelog lists first-parent commits of the range with their PR numbers', async (t) => {
+  const rootDir = await createTemplateRepo(t);
+  const git = (...args) => execFileSync('git', args, { cwd: rootDir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  const commit = (subject) => git('commit', '--allow-empty', '-m', subject, '--author', 'Some Author <author@example.com>');
+  const base = git('rev-parse', 'HEAD');
+  commit('fix(ui): first change (#12)');
+  commit('chore: no pull request');
+  const dev = git('rev-parse', '--abbrev-ref', 'HEAD');
+  git('checkout', '-q', '-b', 'side');
+  commit('side work (#99)');
+  git('checkout', '-q', dev);
+  git('merge', '-q', '--no-ff', 'side', '-m', 'Merge the side work (#13)');
+  const result = runNode('--input-type=module', ['-e',
+    'import {analyzeReleaseRange} from "./scripts/automation/release-support-lib.mjs"; console.log(JSON.stringify(analyzeReleaseRange(["--allow-any-branch"]).changelog));'
+  ], rootDir, { RELEASE_BASE_REF: base, RELEASE_HEAD_REF: 'HEAD', GITHUB_HEAD_REF: '' });
+  assert.equal(result.status, 0, String(result.stderr));
+  assert.deepEqual(JSON.parse(result.stdout), [
+    { author: 'Some Author', subject: 'fix(ui): first change', pr: '12' },
+    { author: 'Some Author', subject: 'chore: no pull request', pr: '' },
+    { author: 'Harness Fixture', subject: 'Merge the side work', pr: '13' }
+  ]);
 });
 
 test('release metadata parser remains compatible with unbulleted metadata', () => {

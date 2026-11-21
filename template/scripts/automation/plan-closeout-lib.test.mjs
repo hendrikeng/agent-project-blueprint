@@ -1,11 +1,30 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  changedHeadPathsFromNameStatus,
   isHighRiskStandardChangePath,
   isCandidateDispatch,
   resolveCloseoutBranch,
   summarizePlanCloseoutDiff
 } from './plan-closeout-lib.mjs';
+
+test('closeout diff keeps head paths and excludes deleted active plans', () => {
+  assert.deepEqual(
+    changedHeadPathsFromNameStatus(
+      [
+        'D\tdocs/exec-plans/active/foundation.md',
+        'A\tdocs/exec-plans/completed/foundation.md',
+        'R100\tdocs/exec-plans/active/renamed.md\tdocs/exec-plans/completed/renamed.md',
+        'M\tsrc/main.ts',
+      ].join('\n')
+    ),
+    [
+      'docs/exec-plans/completed/foundation.md',
+      'docs/exec-plans/completed/renamed.md',
+      'src/main.ts',
+    ]
+  );
+});
 
 test('selected candidate closeout binds exact revision to trusted workflow identity', () => {
   const head = 'a'.repeat(40);
@@ -82,4 +101,15 @@ test('closeout excludes nested evidence receipts from active and completed plan 
   ], { branchName: 'slice/recovery' });
   assert.deepEqual(summary.activePlanFiles, ['docs/exec-plans/active/payments/recovery.md']);
   assert.deepEqual(summary.completedPlanFiles, []);
+});
+
+test('a pull request merge commit binds through its PR head parent when the payload merge SHA is stale', () => {
+  const head = 'c'.repeat(40);
+  const prHead = 'd'.repeat(40);
+  const env = { GITHUB_ACTIONS: 'true', GITHUB_SHA: head, GITHUB_EVENT_NAME: 'pull_request', GITHUB_REF: 'refs/pull/12/merge', PLAN_CLOSEOUT_BRANCH_NAME: 'dev' };
+  const event = { number: 12, pull_request: { merge_commit_sha: 'a'.repeat(40), head: { sha: prHead }, base: { ref: 'dev' } } };
+  assert.equal(resolveCloseoutBranch('', head, env, event, ['b'.repeat(40), prHead]), 'dev');
+  assert.throws(() => resolveCloseoutBranch('', head, env, event, ['b'.repeat(40), 'e'.repeat(40)]), /Detached closeout/);
+  assert.throws(() => resolveCloseoutBranch('', head, env, event, [prHead]), /Detached closeout/);
+  assert.throws(() => resolveCloseoutBranch('', head, env, event), /Detached closeout/);
 });

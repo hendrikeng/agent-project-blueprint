@@ -132,6 +132,17 @@ function refExists(ref) {
   return Boolean(gitMaybe(["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]));
 }
 
+// A tag behind main, for example after a withdrawn release, would select released history.
+// So main is the base when it contains the tag and moved past it.
+function defaultReleaseBase() {
+  const tag = latestReleaseTag();
+  if (!refExists("origin/main")) return tag;
+  if (!tag) return "origin/main";
+  const mainContainsTag = gitMaybe(["rev-list", "--count", `origin/main..${tag}`]) === "0";
+  const mainIsNewer = gitMaybe(["rev-list", "--count", `${tag}..origin/main`]) !== "0";
+  return mainContainsTag && mainIsNewer ? "origin/main" : tag;
+}
+
 export function releaseSourceBoundary(base, hasRef = refExists) {
   const sourceTag = RELEASE_TAG_REGEX.test(base) ? `source-${base}` : "";
   return sourceTag && hasRef(sourceTag) ? sourceTag : base;
@@ -166,7 +177,7 @@ function parseArgs(argv) {
   }
 
   if (!options.base) {
-    options.base = latestReleaseTag() || (refExists("origin/main") ? "origin/main" : "");
+    options.base = defaultReleaseBase();
   }
 
   return options;
@@ -176,12 +187,22 @@ function changedFiles(base, head) {
   return splitLines(git(["diff", "--name-only", `${base}..${head}`]));
 }
 
-function commitHashes(base, head) {
+function excludedRefs(base, head) {
   const publishedSources = splitLines(gitMaybe(["tag", "--merged", base, "--list", "v[0-9]*"]))
     .filter(tag => RELEASE_TAG_REGEX.test(tag) && isValidReleaseVersion(tag.slice(1)))
     .map(tag => `source-${tag}`)
     .filter(source => refExists(source) && gitMaybe(["rev-list", "--count", `${head}..${source}`]) === "0");
-  return splitLines(git(["rev-list", "--reverse", head, "--not", base, ...publishedSources]));
+  return [base, ...publishedSources];
+}
+
+// The notes need no token, so each entry uses the commit author name and the squash subject.
+function changelogEntries(head, excluded) {
+  return splitLines(git(["log", "--first-parent", "--reverse", "--format=%an%x00%s", head, "--not", ...excluded]))
+    .map((line) => {
+      const [author, subject] = line.split("\0");
+      const pr = subject.match(/^(.*?)\s*\(#(\d+)\)$/);
+      return { author, subject: pr ? pr[1] : subject, pr: pr ? pr[2] : "" };
+    });
 }
 
 function commitDetails(hash) {
@@ -300,6 +321,7 @@ export function analyzeReleaseRange(argv = process.argv.slice(2)) {
       plans: [],
       files: [],
       commits: [],
+      changelog: [],
       migrationFiles: [],
       configFiles: [],
       mappedStandardChanges: [],
@@ -307,7 +329,9 @@ export function analyzeReleaseRange(argv = process.argv.slice(2)) {
   }
 
   const files = changedFiles(base, head);
-  const commits = commitHashes(base, head).map(commitDetails);
+  const excluded = excludedRefs(base, head);
+  const commits = splitLines(git(["rev-list", "--reverse", head, "--not", ...excluded])).map(commitDetails);
+  const changelog = changelogEntries(head, excluded);
   const completedPlanFiles = files.filter(isCompletedPlanPath);
   const releaseCommitMappingsForHead = releaseCommitMappings(head);
   const mappedStandardChanges = [];
@@ -404,6 +428,7 @@ export function analyzeReleaseRange(argv = process.argv.slice(2)) {
     head,
     files,
     commits,
+    changelog,
     plans,
     findings,
     warnings,
@@ -420,6 +445,16 @@ export function renderReleaseNotes(report) {
   lines.push(`Base: \`${report.base}\``);
   lines.push(`Head: \`${report.head}\``);
   if (report.branch) lines.push(`Branch: \`${report.branch}\``);
+  lines.push("");
+  lines.push("## What's Changed");
+  lines.push("");
+  if (report.changelog.length > 0) {
+    for (const entry of report.changelog) {
+      lines.push(`- ${entry.subject} by ${entry.author}${entry.pr ? ` in #${entry.pr}` : ""}`);
+    }
+  } else {
+    lines.push("- none identified automatically");
+  }
   lines.push("");
   if (report.warnings.length > 0) {
     lines.push("## Release Mapping Warnings");
@@ -486,7 +521,7 @@ export function usage(commandName) {
     `Usage: node --run ${commandName} -- [--base <ref>] [--head <ref>] [--allow-any-branch]`,
     "",
     "Defaults:",
-    "- --base uses RELEASE_BASE_REF, then the latest vYYYY.MM.DD.N tag, then origin/main for the first release.",
+    "- --base uses RELEASE_BASE_REF, then the latest vYYYY.MM.DD.N tag, then origin/main for the first release or when origin/main contains that tag and moved past it.",
     "- A release-tag base uses its companion source-vYYYY.MM.DD.N tag when available.",
     "- --head uses RELEASE_HEAD_REF, then HEAD.",
     "- release verification expects the current branch to match release/YYYY.MM.DD.N unless --allow-any-branch is set.",

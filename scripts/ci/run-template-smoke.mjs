@@ -180,12 +180,17 @@ async function assertPullRequestTemplatesMatchVerifier(repoDir) {
       path: '.github/PULL_REQUEST_TEMPLATE/release.md',
       headRef: 'release/2026.05.12.1',
       baseRef: 'main',
-      title: 'Release 2026.05.12.1'
+      title: 'Release 2026.05.12.1',
+      // An author fills these release fields; the verifier rejects their template values.
+      fill: (body) => body.replaceAll('YYYY.MM.DD.N', '2026.05.12.1')
+        .replace('- Included completed Plan-IDs:', '- Included completed Plan-IDs: smoke-plan')
+        .replace('- Rollback or fix-forward plan:', '- Rollback or fix-forward plan: Revert the release merge commit.')
     }
   ];
 
   for (const template of templates) {
-    const body = await fs.readFile(path.join(repoDir, template.path), 'utf8');
+    const raw = await fs.readFile(path.join(repoDir, template.path), 'utf8');
+    const body = template.fill ? template.fill(raw) : raw;
     const findings = validatePrContract({
       headRef: template.headRef,
       baseRef: template.baseRef,
