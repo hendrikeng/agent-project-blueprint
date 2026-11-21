@@ -60,7 +60,9 @@ test('pre-push blocks a failed check on the checked-out feature branch and logs 
   const failed = hook(pushSlice, { FAIL_LINT: '1' });
   assert.equal(failed.status, 1);
   assert.doesNotMatch(failed.stdout, /TYPECHECK/, 'the first failure stops the checks');
-  assert.equal(hook(pushSlice, { VERIFY_PRE_PUSH: 'skip', FAIL_LINT: '1' }).status, 0);
+  const skipped = hook(pushSlice, { VERIFY_PRE_PUSH: 'skip', FAIL_LINT: '1' });
+  assert.equal(skipped.status, 0);
+  assert.match(skipped.stderr, /WARNING: slice\/x was pushed without format, lint, and typecheck checks \(skipped\)/);
   await fs.writeFile(path.join(root, 'src/card.ts'), 'export const dirty = 1;\n');
   assert.equal(hook(pushSlice, { FAIL_LINT: '1' }).status, 0, 'the checks read the working tree, not the pushed commit');
   git('checkout', '-q', '--', 'src/card.ts');

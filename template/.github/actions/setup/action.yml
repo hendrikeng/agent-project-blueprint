@@ -31,7 +31,7 @@ runs:
     - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ inputs.package-manager == 'npm' && '~/.npm' || 'node_modules' }}
-        key: deps-${{ inputs.package-manager }}-${{ runner.os }}-${{ runner.arch }}-node${{ inputs.node-version }}-${{ hashFiles(inputs.lockfile, 'package.json') }}
+        key: deps-${{ inputs.package-manager }}-${{ runner.os }}-${{ runner.arch }}-node${{ inputs.node-version }}-${{ hashFiles(inputs.lockfile, 'package.json', 'pnpm-workspace.yaml') }}
         restore-keys: deps-${{ inputs.package-manager }}-${{ runner.os }}-${{ runner.arch }}-node${{ inputs.node-version }}-
     - shell: bash
       run: ${{ inputs.install-command }}

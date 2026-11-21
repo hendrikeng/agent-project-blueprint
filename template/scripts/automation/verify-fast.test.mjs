@@ -80,7 +80,7 @@ test('verify-fast predicts plan closeout against the configured integration ref 
   assert.equal(closeout(), plain, 'without configuration the local run keeps the iteration mode');
   await fs.mkdir(path.join(rootDir, 'docs/governance'), { recursive: true });
   await fs.writeFile(path.join(rootDir, 'docs/governance/policy-manifest.json'), JSON.stringify({ validationPolicy: { closeoutPredictionRef: 'origin/main' } }));
-  assert.equal(closeout(), `[verify-fast] dry-run: PLAN_CLOSEOUT_BASE_REF=${base} node ./scripts/automation/check-plan-closeout.mjs`);
+  assert.equal(closeout(), `[verify-fast] dry-run: PLAN_CLOSEOUT_BASE_REF=${base} PLAN_CLOSEOUT_BRANCH_NAME=main node ./scripts/automation/check-plan-closeout.mjs`);
   assert.equal(closeout({ VERIFY_FAST_SKIP_CLOSEOUT: '1' }), plain);
   assert.equal(closeout({ GITHUB_ACTIONS: 'true' }), plain);
   git('checkout', '-q', 'main');

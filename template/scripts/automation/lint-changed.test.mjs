@@ -154,3 +154,16 @@ test('lint-changed passes file names after `--`, so a name like an option stays 
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /RUFF:check -- --exit-zero\.py changed\.py/);
 });
+
+test('lint-changed passes the configured Node options to a Node tool', async (t) => {
+  const rootDir = await fixture(t, {
+    'eslint.config.js': 'export default [];\n',
+    'node_modules/eslint/package.json': JSON.stringify({ name: 'eslint', bin: { eslint: 'cli.js' } }),
+    'node_modules/eslint/cli.js': "console.log('ESLINT-NODE:' + process.execArgv.join(' '));\n"
+  });
+  await fs.mkdir(path.join(rootDir, 'docs/governance'), { recursive: true });
+  await fs.writeFile(path.join(rootDir, 'docs/governance/policy-manifest.json'), JSON.stringify({ validationPolicy: { changedFileNodeOptions: { eslint: ['--max-old-space-size=4096'] } } }));
+  const result = run(rootDir);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /ESLINT-NODE:--max-old-space-size=4096/);
+});

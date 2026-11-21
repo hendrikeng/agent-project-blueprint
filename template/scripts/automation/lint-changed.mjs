@@ -179,13 +179,24 @@ const untrackedFilesOutput = hookMode
 
 // Optional: validationPolicy.changedFileObserve in docs/governance/policy-manifest.json lists tool ids
 // (oxfmt, oxlint, eslint, ruff-format, ruff-check) that report findings without failing, for example during a formatter adoption.
-function observedTools() {
+function validationPolicy() {
   try {
-    const ids = JSON.parse(readFileSync("docs/governance/policy-manifest.json", "utf8")).validationPolicy?.changedFileObserve;
-    return new Set(Array.isArray(ids) ? ids : []);
+    return JSON.parse(readFileSync("docs/governance/policy-manifest.json", "utf8")).validationPolicy ?? {};
   } catch {
-    return new Set();
+    return {};
   }
+}
+
+function observedTools() {
+  const ids = validationPolicy().changedFileObserve;
+  return new Set(Array.isArray(ids) ? ids : []);
+}
+
+// Optional: validationPolicy.changedFileNodeOptions maps a tool id to Node options,
+// for example { "eslint": ["--max-old-space-size=4096"] } for a type-aware ESLint run.
+function nodeOptions(id) {
+  const options = validationPolicy().changedFileNodeOptions?.[id];
+  return Array.isArray(options) ? options.filter((option) => typeof option === "string" && option.startsWith("--")) : [];
 }
 
 const changedFiles = collectLintableChangedFiles(
@@ -196,7 +207,7 @@ const pythonFiles = collectPythonChangedFiles(changedFilesOutput, untrackedFiles
 
 if (changedFiles.length + pythonFiles.length === 0) {
   console.log(
-    `lint:changed found no lintable files changed since ${comparisonBase}.`,
+    checkAll ? "lint:changed found no lintable tracked files." : `lint:changed found no lintable files changed since ${comparisonBase}.`,
   );
   process.exit(0);
 }
@@ -216,7 +227,7 @@ for (const tool of tools) {
   let prefix = [];
   if (!command) {
     const bin = packageBin(tool.name);
-    if (bin) [command, prefix] = [process.execPath, [bin]];
+    if (bin) [command, prefix] = [process.execPath, [...nodeOptions(tool.id), bin]];
     else if (existsSync(".pnp.cjs")) [command, prefix] = ["yarn", [tool.name]];
     else {
       console.error(`lint:changed: ${tool.name} is configured, but node_modules/${tool.name} is missing. Install the dependencies.`);

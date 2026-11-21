@@ -121,6 +121,12 @@
           "type": "array",
           "items": { "type": "string", "enum": ["oxfmt", "oxlint", "eslint", "ruff-format", "ruff-check"] },
           "description": "Optional. Changed-file tools that report findings without failing, for example during a formatter adoption."
+        },
+        "changedFileNodeOptions": {
+          "type": "object",
+          "propertyNames": { "enum": ["oxfmt", "oxlint", "eslint"] },
+          "additionalProperties": { "type": "array", "items": { "type": "string", "pattern": "^--" } },
+          "description": "Optional. Node options for a changed-file tool, for example {\"eslint\": [\"--max-old-space-size=4096\"]}."
         }
       },
       "additionalProperties": false

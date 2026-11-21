@@ -108,7 +108,8 @@ function closeoutCommand() {
     console.log(`[verify-fast] No commits ahead of ${ref}. Closeout runs in local iteration mode.`);
     return CLOSEOUT_COMMAND;
   }
-  commandEnv.set(CLOSEOUT_COMMAND, { PLAN_CLOSEOUT_BASE_REF: baseSha });
+  // The branch part of the ref, for example dev in origin/dev: the closeout check applies its protected-branch rules.
+  commandEnv.set(CLOSEOUT_COMMAND, { PLAN_CLOSEOUT_BASE_REF: baseSha, PLAN_CLOSEOUT_BRANCH_NAME: ref.replace(/^[^/]+\//, '') });
   return CLOSEOUT_COMMAND;
 }
 

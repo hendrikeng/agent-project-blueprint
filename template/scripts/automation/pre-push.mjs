@@ -76,6 +76,7 @@ function check(push, head, logPath, remote) {
     result = failed ? `fail: ${failed[1]}` : 'pass';
   }
   const seconds = ((Date.now() - started) / 1000).toFixed(1);
+  if (result.startsWith('skipped')) console.error(`[pre-push] WARNING: ${branch} was pushed without format, lint, and typecheck checks (${result}). CI still checks it.`);
   console.error(`[pre-push] ${branch}: ${result} in ${seconds} s`);
   fs.appendFileSync(logPath, `${new Date().toISOString()}\t${sha}\t${branch}\t${result}\t${seconds}\n`);
   return !result.startsWith('fail');

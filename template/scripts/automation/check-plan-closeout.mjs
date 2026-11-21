@@ -43,6 +43,9 @@ try {
   const branchName = resolveCloseoutBranch(actualBranch, head, process.env, event, parents);
   const changeBranchName = event && process.env.GITHUB_EVENT_NAME === 'pull_request'
     ? event.pull_request.head?.ref || branchName : branchName;
+  // A local prediction (verify-fast closeoutPredictionRef) checks the branch that the change will merge into.
+  const targetBranch = !event && process.env.GITHUB_ACTIONS !== 'true' && process.env.PLAN_CLOSEOUT_BRANCH_NAME
+    ? process.env.PLAN_CLOSEOUT_BRANCH_NAME.replace(/^refs\/heads\//, '') : branchName;
   const mergeHeadPath = gitOutput(['rev-parse', '--git-path', 'MERGE_HEAD']);
   const mergeHeads = (existsSync(mergeHeadPath) ? readFileSync(mergeHeadPath, 'utf8') : '').trim().split(/\s+/).filter(Boolean);
   if (isLocalFeatureIteration(actualBranch, process.env, mergeHeads)) {
@@ -71,8 +74,8 @@ try {
   const readBaseline = file => gitBytes(['show', `${base}:${file}`], { allowFailure: true });
   const readIndex = file => gitBytes(['show', `:${file}`], { allowFailure: true });
   const readWorktree = file => existsSync(file) ? readFileSync(file) : null;
-  if (['dev', 'main'].includes(branchName)) {
-    assertProtectedBranchHasNoActivePlans([...new Set([...worktreeActive, ...indexedActive])], branchName,
+  if (['dev', 'main'].includes(targetBranch)) {
+    assertProtectedBranchHasNoActivePlans([...new Set([...worktreeActive, ...indexedActive])], targetBranch,
       { readBaseline, readIndex, readWorktree });
   }
   const indexedChanges = changedFilesFromNameStatus(gitOutput(['diff', '--cached', '--name-status', base, '-z']));
