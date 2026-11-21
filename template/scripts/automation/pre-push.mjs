@@ -9,6 +9,14 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 
 const git = (...args) => execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+const isAncestor = (ancestor, sha) => spawnSync('git', ['merge-base', '--is-ancestor', ancestor, sha]).status === 0;
+const refExists = (ref) => spawnSync('git', ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]).status === 0;
+
+// The changed-file base for one push: the remote branch tip, or for a new branch the integration or default branch.
+function lintBase({ sha, remoteSha, exists }) {
+  if (exists && isAncestor(remoteSha, sha)) return remoteSha;
+  return ['origin/dev', 'origin/HEAD', 'origin/main'].find(refExists) ?? '';
+}
 
 // The blueprint branch model: changes reach dev and main only through pull requests.
 export const protectedBranches = ['dev', 'main'];
@@ -24,15 +32,28 @@ export const checks = [
 ];
 
 // Git passes one `<local ref> <local sha> <remote ref> <remote sha>` line per pushed ref on stdin.
+// A deletion has an all-zero local SHA. A new remote branch has an all-zero remote SHA.
 export function pushedBranches(stdin) {
+  const sha = (value) => /^[0-9a-f]{40,64}$/.test(value ?? '');
+  const zero = (value) => /^0+$/.test(value);
   // The remote ref names the branch: the local side can be `HEAD` or a SHA.
   return stdin.split('\n').map((line) => line.trim().split(/\s+/))
-    .filter(([, sha, ref]) => ref?.startsWith('refs/heads/') && /^[0-9a-f]{40,64}$/.test(sha ?? '') && !/^0+$/.test(sha))
-    .map(([, sha, ref, remoteSha]) => ({ branch: ref.slice('refs/heads/'.length), sha, exists: /^[0-9a-f]+$/.test(remoteSha ?? '') && !/^0+$/.test(remoteSha) }));
+    .filter(([, local, ref, remote]) => ref?.startsWith('refs/heads/') && sha(local) && sha(remote))
+    .map(([, local, ref, remote]) => ({ branch: ref.slice('refs/heads/'.length), sha: local, remoteSha: remote, exists: !zero(remote), deleted: zero(local) }));
+}
+
+// Returns an error message, or '' when the push can continue.
+export function protectedPushError({ branch, sha, remoteSha, exists, deleted }, allow, isAncestor) {
+  if (!protectedBranches.includes(branch) || (!exists && !deleted)) return '';
+  if (deleted) return `Deleting ${branch} is not allowed.`;
+  if (!allow) return `Direct pushes to ${branch} are not allowed. Open a pull request.`;
+  // The escape covers only a fast-forward: it never rewrites the remote history.
+  return isAncestor(remoteSha, sha) ? '' : `ALLOW_PROTECTED_PUSH allows only a fast-forward of the fetched ${branch}.`;
 }
 
 // Returns true when the push can continue.
-function check({ branch, sha }, head, logPath) {
+function check(push, head, logPath) {
+  const { branch, sha } = push;
   if (!featureBranch(branch)) return true;
   const started = Date.now();
   let result;
@@ -42,6 +63,8 @@ function check({ branch, sha }, head, logPath) {
   else if (git('status', '--porcelain', '--untracked-files=no')) result = 'skipped: uncommitted changes';
   else {
     const env = { ...hookEnv(process.env), LINT_CHANGED_TRACKED_ONLY: '1' };
+    const base = lintBase(push);
+    if (base) env.VERIFY_LINT_BASE = base;
     const failed = checks.find(([command, ...args]) => {
       console.error(`[pre-push] ${command} ${args.join(' ')}`);
       return spawnSync(command, args, { env, stdio: ['ignore', 'inherit', 'inherit'] }).status !== 0;
@@ -58,16 +81,19 @@ function main() {
   const logPath = path.resolve(git('rev-parse', '--git-dir'), 'pre-push.log');
   const head = git('rev-parse', 'HEAD');
   const pushed = pushedBranches(fs.readFileSync(0, 'utf8'));
-  // The first push creates the branch. ALLOW_PROTECTED_PUSH=1 is the logged escape for a fully gated fast-forward.
-  const protectedPush = pushed.find(({ branch, exists }) => exists && protectedBranches.includes(branch));
-  if (protectedPush && process.env.ALLOW_PROTECTED_PUSH === '1') {
-    fs.appendFileSync(logPath, `${new Date().toISOString()}\t${protectedPush.sha}\t${protectedPush.branch}\tallowed: ALLOW_PROTECTED_PUSH\t0.0\n`);
-  } else if (protectedPush) {
-    console.error(`[pre-push] Direct pushes to ${protectedPush.branch} are not allowed. Open a pull request.`);
+  // The first push creates the branch. ALLOW_PROTECTED_PUSH=1 is the logged escape for a gated fast-forward.
+  const allow = process.env.ALLOW_PROTECTED_PUSH === '1';
+  const error = pushed.map((push) => protectedPushError(push, allow, isAncestor)).find(Boolean);
+  if (error) {
+    console.error(`[pre-push] ${error}`);
     return false;
   }
+  // Log only after every ref passed, because Git rejects the whole push otherwise.
+  for (const push of pushed.filter(({ branch, exists }) => exists && protectedBranches.includes(branch))) {
+    fs.appendFileSync(logPath, `${new Date().toISOString()}\t${push.sha}\t${push.branch}\tallowed: ALLOW_PROTECTED_PUSH\t0.0\n`);
+  }
   let ok = true;
-  for (const branch of pushed) ok = check(branch, head, logPath) && ok;
+  for (const branch of pushed.filter(({ deleted }) => !deleted)) ok = check(branch, head, logPath) && ok;
   if (!ok) console.error('[pre-push] Fix the findings above and push again.');
   return ok;
 }

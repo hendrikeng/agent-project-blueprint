@@ -141,7 +141,16 @@ if (tools.length === 0) {
   process.exit(0);
 }
 
+const hookMode = process.env.LINT_CHANGED_TRACKED_ONLY === "1";
 const baseRef = resolveBaseRef();
+
+// From the pre-push hook, the HEAD^ fallback would check only the last commit of the push. Fail instead of narrowing.
+// pre-push.mjs sets VERIFY_LINT_BASE to the remote branch tip or to the integration branch, so this needs no remote ref.
+const explicitBase = Boolean(baseRef) && baseRef === process.env.VERIFY_LINT_BASE?.trim();
+if (hookMode && (!baseRef || (baseRef === "HEAD^" && !explicitBase))) {
+  console.error("lint:changed: no comparison base for the pushed commits. Fetch the remote or set VERIFY_LINT_BASE.");
+  process.exit(1);
+}
 
 if (!baseRef) {
   console.log(
@@ -151,15 +160,23 @@ if (!baseRef) {
 }
 
 const comparisonBase =
-  baseRef === "HEAD^" ? "HEAD^" : runGit(["merge-base", "HEAD", baseRef]);
+  baseRef === "HEAD^" ? "HEAD^" : runGit(["merge-base", "HEAD", baseRef], { allowFailure: true });
+if (!comparisonBase) {
+  console.error(`lint:changed: HEAD has no merge base with ${baseRef}. Fetch more history or set VERIFY_LINT_BASE.`);
+  process.exit(1);
+}
 
-const changedFilesOutput =
-  runGit(["diff", "--name-only", "--diff-filter=ACMR", comparisonBase], {
-    allowFailure: true,
-  }) ?? "";
+const changedFilesDiff = runGit(["diff", "--name-only", "--diff-filter=ACMR", comparisonBase], {
+  allowFailure: true,
+});
+if (hookMode && changedFilesDiff === null) {
+  console.error(`lint:changed: git diff against ${comparisonBase} failed, so no files were checked.`);
+  process.exit(1);
+}
+const changedFilesOutput = changedFilesDiff ?? "";
 
 // The pre-push hook checks only committed files: an untracked scratch file is not part of the push.
-const untrackedFilesOutput = process.env.LINT_CHANGED_TRACKED_ONLY === "1"
+const untrackedFilesOutput = hookMode
   ? ""
   : runGit(["ls-files", "--others", "--exclude-standard"], { allowFailure: true }) ?? "";
 

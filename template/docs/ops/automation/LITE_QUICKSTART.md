@@ -24,7 +24,9 @@ If `.githooks` is not at the repository root, if Git has a hooks path, or if `.g
 In that case, call `scripts/automation/pre-push.mjs` from your pre-push hook.
 The `pre-push` hook stops the push when a check fails. The target time is less than 9 seconds.
 The hook refuses direct pushes to an existing `dev` or `main` branch. Merge through a pull request.
-The first push that creates the branch is allowed. For a fully gated fast-forward when hosted CI cannot run, set `ALLOW_PROTECTED_PUSH=1`. The hook writes this to its log.
+The hook also refuses to delete `dev` or `main`. The first push that creates the branch is allowed.
+If hosted CI cannot run, run the full gate on the exact commit first. Then set `ALLOW_PROTECTED_PUSH=1` for the fast-forward push.
+The hook does not run the gate. It allows only a fast-forward of the fetched branch, and it writes the push to its log.
 If you push the checked-out feature branch, the hook runs two checks:
 
 1. `scripts/automation/lint-changed.mjs`: oxfmt and oxlint on the committed changed files, ESLint if configured, or Ruff in a Python project.
@@ -33,7 +35,8 @@ If you push the checked-out feature branch, the hook runs two checks:
 To adopt a tool step by step, list its id in `validationPolicy.changedFileObserve` in `docs/governance/policy-manifest.json`.
 The ids are `oxfmt`, `oxlint`, `eslint`, `ruff-format`, and `ruff-check`. A listed tool reports findings and does not fail. Remove the id when the files are clean.
 CI does not run the hook: `install-hooks.mjs` changes nothing when `CI` is set to a value other than `false` or `0`.
-A tool in observe mode still fails on a crash or a configuration error (any exit code other than 1). oxlint also uses exit code 1 for a configuration error.
+A tool in observe mode still fails on an exit code other than 1. Exit code 1 can also mean a crash or a configuration error, for example in oxlint or a Node tool. Thus keep a tool in observe mode only during the adoption.
+On Windows, Yarn Plug'n'Play projects are not supported: Node cannot start `yarn.cmd` without a shell.
 
 A local `verify:fast` normally skips plan closeout during feature work.
 To check closeout as the PR into the integration branch will, set `validationPolicy.closeoutPredictionRef`, for example to `origin/dev`.
