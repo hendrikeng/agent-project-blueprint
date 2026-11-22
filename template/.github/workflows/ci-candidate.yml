@@ -122,7 +122,7 @@ jobs:
               reused_full_run_id: e.REUSED_RUN_ID || null
             }) + "\n");
           '
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ci-candidate-${{ inputs.revision }}
           path: ${{ runner.temp }}/ci-candidate-evidence/evidence.json

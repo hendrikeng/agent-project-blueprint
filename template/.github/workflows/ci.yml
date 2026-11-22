@@ -116,7 +116,7 @@ jobs:
         run: |
           git rev-parse 'HEAD^{tree}' >"$RUNNER_TEMP/full-tree.txt"
           echo "tree=$(cat "$RUNNER_TEMP/full-tree.txt")" >>"$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: steps.tree.outcome == 'success'
         with:
           name: full-tree-${{ steps.tree.outputs.tree }}
