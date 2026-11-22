@@ -30,7 +30,7 @@ runs:
       shell: bash
       run: |
         node_bin="$(dirname "$(command -v node)")"
-        [ -x "$node_bin/corepack" ] || (cd "$RUNNER_TEMP" && npm install --global --ignore-scripts corepack@0.36.0)
+        [ -x "$node_bin/corepack" ] || (cd "$RUNNER_TEMP" && npm install --global --prefix "$(dirname "$node_bin")" --ignore-scripts corepack@0.36.0)
         "$node_bin/corepack" enable
     # Cache node_modules, not only the package store. The install still runs and repairs a partial restore.
     # `npm ci` deletes node_modules first, so npm caches its package store instead.

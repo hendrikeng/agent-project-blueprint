@@ -48,13 +48,13 @@ function packageBin(name) {
   }
 }
 
-// --report-unused-disable-directives-severity exists since ESLint 8.56. Yarn Plug'n'Play has no node_modules: assume a current ESLint.
+// --report-unused-disable-directives-severity exists since ESLint 8.56. If the version is unknown, the flag is not passed.
 function eslintSupportsDirectiveSeverity() {
   try {
     const [major, minor] = JSON.parse(readFileSync(path.join("node_modules", "eslint", "package.json"), "utf8")).version.split(".").map(Number);
     return major > 8 || (major === 8 && minor >= 56);
   } catch {
-    return true;
+    return false;
   }
 }
 

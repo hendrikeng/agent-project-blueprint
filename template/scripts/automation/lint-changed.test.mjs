@@ -225,7 +225,7 @@ test('lint-changed checks changed files with non-ASCII names', async (t) => {
 test('lint-changed passes PRE_PUSH_FAST to the tools only in hook mode', async (t) => {
   const rootDir = await fixture(t, {
     'eslint.config.js': 'export default [];\n',
-    'node_modules/eslint/package.json': JSON.stringify({ name: 'eslint', bin: { eslint: 'cli.js' } }),
+    'node_modules/eslint/package.json': JSON.stringify({ name: 'eslint', version: '9.0.0', bin: { eslint: 'cli.js' } }),
     'node_modules/eslint/cli.js': "console.log('FAST=' + process.env.PRE_PUSH_FAST + ' ARGS=' + process.argv.slice(2).join(' '));\n"
   });
   for (const args of [['add', 'changed.js'], ['-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-qm', 'change']]) {
