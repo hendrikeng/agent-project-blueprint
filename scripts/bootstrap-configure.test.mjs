@@ -46,7 +46,7 @@ for (const owner of ['@acme/platform', '@hendrikeng']) test(`bootstrap configure
   assert.equal(workflow.match(/- uses: \.\/\.github\/actions\/setup/g)?.length, 4);
   assert.match(workflow, /pull_request:\s+branches: \[dev, main\]\s+types: \[opened, synchronize, reopened, edited, ready_for_review, labeled\]/);
   assert.match(workflow, /merge_group:\s+branches: \[main\]\s+types: \[checks_requested\]/);
-  assert.doesNotMatch(workflow, /^  push:/m);
+  assert.doesNotMatch(workflow, /^ {2}push:/m);
   assert.match(workflow, /needs: \[scope, fast-gate, release-candidate-gate, project-gate, unit-tests\]\s+if: >-\s+always\(\)/);
   assert.match(workflow, /node --run verify:full -- --skip-fast\s+id: full\s+if: \(needs.scope.outputs.scope == 'full' \|\| \(github.event_name == 'pull_request' && \(needs.scope.outputs.scope == 'broad' \|\| needs.scope.outputs.scope == 'harness'\)\)\) && \(github.event_name == 'merge_group' \|\| github.event.label.name == 'ci:full'\)/);
   for (const name of ['pr-draft.yml', 'ci-full-label.yml']) await fs.access(path.join(targetDir, '.github/workflows', name));

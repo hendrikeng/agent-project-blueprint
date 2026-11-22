@@ -36,9 +36,11 @@ export const checks = [
 ];
 
 // Optional: validationPolicy.prePushWholeProgram false in docs/governance/policy-manifest.json. Default: true.
-export function wholeProgramOnPush() {
+// The setting comes from the pushed commit (HEAD), not the working tree: an untracked file cannot turn on fast mode.
+// A missing file, invalid JSON, or any value other than false keeps every check.
+export function wholeProgramOnPush(read = () => git('show', 'HEAD:docs/governance/policy-manifest.json')) {
   try {
-    return JSON.parse(fs.readFileSync('docs/governance/policy-manifest.json', 'utf8')).validationPolicy?.prePushWholeProgram !== false;
+    return JSON.parse(read()).validationPolicy?.prePushWholeProgram !== false;
   } catch {
     return true;
   }

@@ -187,9 +187,14 @@ const untrackedFilesOutput = hookMode
 
 // Optional: validationPolicy.changedFileObserve in docs/governance/policy-manifest.json lists tool ids
 // (bun-fmt, oxfmt, oxlint, eslint, ruff-format, ruff-check) that report findings without failing, for example during a formatter adoption.
+// In hook mode the policy manifest comes from the pushed commit (HEAD), so an untracked manifest cannot weaken the push
+// checks. Tool configuration files still come from the working tree.
 function validationPolicy() {
   try {
-    return JSON.parse(readFileSync("docs/governance/policy-manifest.json", "utf8")).validationPolicy ?? {};
+    const source = hookMode
+      ? runGit(["show", "HEAD:docs/governance/policy-manifest.json"])
+      : readFileSync("docs/governance/policy-manifest.json", "utf8");
+    return JSON.parse(source).validationPolicy ?? {};
   } catch {
     return {};
   }

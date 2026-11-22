@@ -234,3 +234,14 @@ test('lint-changed passes PRE_PUSH_FAST to the tools only in hook mode', async (
   assert.match(run(rootDir, { VERIFY_LINT_BASE: 'HEAD^', PRE_PUSH_FAST: '1' }).stdout, /FAST=undefined/, 'a leaked value is dropped');
   assert.match(run(rootDir, { VERIFY_LINT_BASE: 'HEAD^', PRE_PUSH_FAST: '1', LINT_CHANGED_TRACKED_ONLY: '1' }).stdout, /FAST=1/);
 });
+
+test('in hook mode an untracked manifest cannot switch a tool to observe mode', async (t) => {
+  const rootDir = await fixture(t, { '.oxlintrc.json': '{}\n', ...pkg('oxlint', 'OXLINT', 1) });
+  for (const args of [['add', 'changed.js'], ['-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-qm', 'change']]) {
+    assert.equal(spawnSync('git', args, { cwd: rootDir }).status, 0);
+  }
+  await fs.mkdir(path.join(rootDir, 'docs/governance'), { recursive: true });
+  await fs.writeFile(path.join(rootDir, 'docs/governance/policy-manifest.json'), JSON.stringify({ validationPolicy: { changedFileObserve: ['oxlint'] } }));
+  assert.equal(run(rootDir, { VERIFY_LINT_BASE: 'HEAD^' }).status, 0, 'outside the hook the working-tree manifest applies');
+  assert.equal(run(rootDir, { VERIFY_LINT_BASE: 'HEAD^', LINT_CHANGED_TRACKED_ONLY: '1' }).status, 1, 'the hook reads the committed manifest');
+});

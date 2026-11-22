@@ -39,8 +39,8 @@ test('default CI retains required aggregates, contract, and release coverage', (
   // Trigger declarations are the scheduler contract; job conditions cannot disable push runs.
   for (const content of [root, ci]) {
     const events = content.split(/^on:\s*\n/m)[1].split(/^\S/m)[0];
-    assert.deepEqual([...events.matchAll(/^  ([a-z_]+):/gm)].map(match => match[1]), ['pull_request', 'merge_group']);
-    assert.match(events, /merge_group:\n(?:    branches: \[main\]\n)?    types: \[checks_requested\]/);
+    assert.deepEqual([...events.matchAll(/^ {2}([a-z_]+):/gm)].map(match => match[1]), ['pull_request', 'merge_group']);
+    assert.match(events, /merge_group:\n(?:    branches: \[main\]\n)? {4}types: \[checks_requested\]/);
   }
   assert.match(ci, /pull_request:\s+branches: \[dev, main\]\s+types: \[opened, synchronize, reopened, edited, ready_for_review, labeled\]/);
   assert.match(ci, /merge_group:\s+branches: \[main\]/);
@@ -70,16 +70,16 @@ test('PR metadata skips gate runners without replacing or canceling real validat
   const contains = (list, value) => list.includes(value);
   const evaluate = (expression, github, needs = {}) => new Function('github', 'needs', 'always', 'startsWith', 'contains', 'fromJSON', `return (${expression.replace(/\.(?=[a-z_])/g, '?.')})`)(github, needs, () => true, startsWith, contains, JSON.parse);
   // The parallel project gate jobs follow the same metadata rule, and run only for code scopes.
-  const gateJobs = ['project-gate', 'unit-tests'].map((id) => ci.split(`  ${id}:\n`)[1].match(/^    if: >-\n((?:      [^\n]+\n)+)/m)[1].trim());
-  const group = (github) => ci.match(/^  group: (.+)$/m)[1]
+  const gateJobs = ['project-gate', 'unit-tests'].map((id) => ci.split(`  ${id}:\n`)[1].match(/^ {4}if: >-\n((?:      [^\n]+\n)+)/m)[1].trim());
+  const group = (github) => ci.match(/^ {2}group: (.+)$/m)[1]
     .replace(/\$\{\{ (.+?) \}\}/g, (_, expression) => evaluate(expression, github));
   const jobs = ['fast-gate', 'full-gate', 'release-candidate-gate'].map((id) => {
-    const block = ci.split(`  ${id}:\n`)[1].split(/\n  [\w-]+:\n/)[0];
-    const condition = block.match(/^    if: >-\n((?:      [^\n]+\n)+)/m)?.[1].trim() ?? block.match(/^    if: (.+)$/m)[1];
-    return { id, condition, name: block.match(/^    name: \$\{\{ (.+) \}\}$/m)[1] };
+    const block = ci.split(`  ${id}:\n`)[1].split(/\n {2}[\w-]+:\n/)[0];
+    const condition = block.match(/^ {4}if: >-\n((?:      [^\n]+\n)+)/m)?.[1].trim() ?? block.match(/^ {4}if: (.+)$/m)[1];
+    return { id, condition, name: block.match(/^ {4}name: \$\{\{ (.+) \}\}$/m)[1] };
   });
   const requiredNames = ['Fast Gate', 'Full Gate', 'Release Candidate Gate'];
-  const scopeCondition = ci.split('  scope:\n')[1].match(/^    if: \$\{\{ (.+) \}\}$/m)[1];
+  const scopeCondition = ci.split('  scope:\n')[1].match(/^ {4}if: \$\{\{ (.+) \}\}$/m)[1];
   for (const base of ['dev', 'main']) {
     const pr = { number: 7, user: { type: 'User' }, head: { ref: 'slice/x', repo: { full_name: 'o/r' } } };
     const real = { event_name: 'pull_request', workflow: 'ci', ref: 'refs/pull/7/merge', repository: 'o/r',
@@ -152,7 +152,7 @@ test('risk PRs run full once ci:full is added, and Full Gate requires it', () =>
   assert.equal(select({ event_name: 'merge_group', event: {} }), '');
   const fullCondition = ci.match(/node --run verify:full -- --skip-fast\s+id: full\s+if: ([^\n]+)/)[1];
   const releaseCondition = ci.match(/RELEASE_REQUIRED: \$\{\{ (.+) \}\}/)[1];
-  const fastScript = ci.match(/name: Focused fast validation[\s\S]*?run: \|\n([\s\S]*?)      - run:/)[1];
+  const fastScript = ci.match(/name: Focused fast validation[\s\S]*?run: \|\n([\s\S]*?) {6}- run:/)[1];
   for (const [path, fullOnPr] of [
     ['src/auth/session.ts', true], ['src/schema.ts', true], ['package-lock.json', true],
     ['src/identity.ts', true], ['apps/api/src/tenancy.ts', true], ['apps/api/src/persistence.ts', true],
@@ -187,7 +187,7 @@ test('risk PRs run full once ci:full is added, and Full Gate requires it', () =>
 
 test('the scope step runs the base classifier and selects full without one', () => {
   const ci = workflow('ci');
-  const step = ci.match(/- id: scope\n[\s\S]*?run: \|\n([\s\S]*?)\n      - run: node \.\/scripts\/automation\/check-pr-contract\.mjs/)[1];
+  const step = ci.match(/- id: scope\n[\s\S]*?run: \|\n([\s\S]*?)\n {6}- run: node \.\/scripts\/automation\/check-pr-contract\.mjs/)[1];
   assert.match(ci, /BASE_SHA: \$\{\{ github.event.pull_request.base.sha \|\| github.event.merge_group.base_sha \}\}/);
   const d = mkdtempSync(path.join(tmpdir(), 'scope-step-'));
   try {
@@ -229,13 +229,13 @@ test('the scope step runs the base classifier and selects full without one', () 
 test('drafts and ci:full label workflows stay small and least-privileged', () => {
   const draft = workflow('pr-draft');
   assert.match(draft, /pull_request_target:\s+types: \[opened, reopened\]/);
-  assert.match(draft, /permissions:\n  contents: write\n  pull-requests: write\n\n/);
+  assert.match(draft, /permissions:\n {2}contents: write\n {2}pull-requests: write\n\n/);
   assert.match(draft, /timeout-minutes: 2/);
   assert.match(draft, /!github.event.pull_request.draft &&\s+github.event.pull_request.user.type != 'Bot' &&\s+!startsWith\(github.event.pull_request.head.ref, 'release\/'\)/);
   assert.match(draft, /gh pr ready --undo "\$PR_URL"/);
   const label = workflow('ci-full-label');
   assert.match(label, /pull_request_target:\s+types: \[synchronize\]/);
-  assert.match(label, /permissions:\n  pull-requests: write\n\n/);
+  assert.match(label, /permissions:\n {2}pull-requests: write\n\n/);
   assert.match(label, /issues\/\$PR\/labels\/ci%3Afull/);
   for (const content of [draft, label]) assert.doesNotMatch(content, /uses:|checkout|paths:/);
   for (const name of ['ci', 'pr-draft', 'ci-full-label']) assert.doesNotMatch(workflow(name), /^\s+paths(-ignore)?:/m);
@@ -243,7 +243,7 @@ test('drafts and ci:full label workflows stay small and least-privileged', () =>
 
 test('candidate dispatch validates trust before checkout and records success-only exact evidence', () => {
   const ci = workflow('ci-candidate');
-  const guard = ci.match(/name: Validate trusted dispatch[\s\S]*?run: \|\n([\s\S]*?)      - uses: actions\/checkout/)[1].replace(/^          /gm, '');
+  const guard = ci.match(/name: Validate trusted dispatch[\s\S]*?run: \|\n([\s\S]*?) {6}- uses: actions\/checkout/)[1].replace(/^ {10}/gm, '');
   const env = { ...process.env, REVISION: 'a'.repeat(40), DEFAULT_BRANCH: 'main', GITHUB_REF: 'refs/heads/main', GITHUB_EVENT_NAME: 'workflow_dispatch' };
   assert.equal(spawnSync('bash', ['-e', '-c', guard], { env }).status, 0);
   for (const invalid of [{ REVISION: 'main' }, { REVISION: 'A'.repeat(40) }, { REVISION: 'a'.repeat(39) }, { GITHUB_REF: 'refs/heads/feature' }, { GITHUB_EVENT_NAME: 'push' }]) {
@@ -255,13 +255,13 @@ test('candidate dispatch validates trust before checkout and records success-onl
   assert.match(ci, /git merge-base --is-ancestor "\$REVISION" origin\/dev/);
   assert.match(ci, /run: node --run verify:fast\n\s+if: needs.reuse.outputs.run_id == ''\n\s+- run: node --run verify:full -- --skip-fast\n\s+if: needs.reuse.outputs.run_id == ''/);
   // Only the lookup job reads Actions and PR data. It runs the dispatch commit, and every doubt runs Full.
-  assert.match(ci, /^permissions:\n  contents: read\n\n/m);
+  assert.match(ci, /^permissions:\n {2}contents: read\n\n/m);
   const lookup = ci.split('  reuse:\n')[1].split('\n  candidate:\n')[0];
   assert.match(lookup, /if: \$\{\{ !inputs.full \}\}/);
-  assert.match(lookup, /permissions:\n      contents: read\n      actions: read\n      pull-requests: read\n/);
+  assert.match(lookup, /permissions:\n {6}contents: read\n {6}actions: read\n {6}pull-requests: read\n/);
   assert.doesNotMatch(lookup, /ref: /);
   assert.match(lookup, /persist-credentials: false/);
-  assert.match(ci, /needs: reuse\n.*\n    if: \$\{\{ !cancelled\(\) \}\}/);
+  assert.match(ci, /needs: reuse\n.*\n {4}if: \$\{\{ !cancelled\(\) \}\}/);
   const script = lookup.match(/run: \|\n([\s\S]*)$/)[1];
   const outputs = (env, node = 'echo run_id=42 >>"$GITHUB_OUTPUT"') => {
     const d = mkdtempSync(path.join(tmpdir(), 'reuse-step-'));
@@ -291,7 +291,7 @@ test('only PRs outside main run the light mode, and a candidate reuse runs the f
   const ci = workflow('ci');
   const candidate = workflow('ci-candidate');
   // The workflow env reaches the fast gate and the unit-tests job.
-  const light = ci.match(/^env:\n(?:  [^\n]*\n)*?  CI_LIGHT_MODE: \$\{\{ (.+) \}\}$/m)[1];
+  const light = ci.match(/^env:\n(?:  [^\n]*\n)*? {2}CI_LIGHT_MODE: \$\{\{ (.+) \}\}$/m)[1];
   const evaluate = (github) => new Function('github', `return (${light})`)(github);
   // Full mode is empty, so a test that checks truthiness also runs the full mode.
   assert.equal(evaluate({ event_name: 'pull_request', base_ref: 'dev' }), 'true');

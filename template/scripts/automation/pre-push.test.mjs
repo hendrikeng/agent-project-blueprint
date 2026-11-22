@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 
-import { checks, hookEnv, lintBase, protectedPushError, pushChecks, pushedBranches } from './pre-push.mjs';
+import { checks, hookEnv, lintBase, protectedPushError, pushChecks, pushedBranches, wholeProgramOnPush } from './pre-push.mjs';
 import { createScriptsRepo } from './test-helpers.mjs';
 
 test('pre-push reads pushed branches from Git and ignores deletions and tags', () => {
@@ -27,7 +27,8 @@ test('pre-push reads pushed branches from Git and ignores deletions and tags', (
 
 test('pre-push blocks a failed check on the checked-out feature branch and logs each push', async (t) => {
   const root = await createScriptsRepo(t);
-  const git = (...args) => spawnSync('git', args, { cwd: root, encoding: 'utf8' });
+  // hookEnv: an inherited GIT_DIR must not point these commands at the real repository.
+  const git = (...args) => spawnSync('git', args, { cwd: root, encoding: 'utf8', env: hookEnv(process.env) });
   // Stub checks: lint-changed fails while FAIL_LINT is set. The typecheck gate prints GIT_DIR.
   await fs.writeFile(path.join(root, 'scripts/automation/lint-changed.mjs'), "console.log('LINT', process.env.LINT_CHANGED_TRACKED_ONLY, process.env.VERIFY_LINT_BASE); process.exitCode = process.env.FAIL_LINT ? 3 : 0;\n");
   await fs.writeFile(path.join(root, 'scripts/automation/check-project-gates.mjs'), "console.log('TYPECHECK', process.argv.slice(2).join(' '), 'GIT_DIR=' + process.env.GIT_DIR);\n");
@@ -44,7 +45,7 @@ test('pre-push blocks a failed check on the checked-out feature branch and logs 
   const logPath = path.join(root, '.git/pre-push.log');
 
   const hook = (input, extraEnv = {}) => spawnSync('node', ['scripts/automation/pre-push.mjs'], {
-    cwd: root, encoding: 'utf8', input, env: { ...process.env, VERIFY_PRE_PUSH: '', FAIL_LINT: '', ...extraEnv }
+    cwd: root, encoding: 'utf8', input, env: { ...hookEnv(process.env), VERIFY_PRE_PUSH: '', FAIL_LINT: '', ...extraEnv }
   });
   const pushSlice = `refs/heads/slice/x ${sha} refs/heads/slice/x ${'0'.repeat(40)}\n`;
 
@@ -131,4 +132,53 @@ test('pre-push fast mode keeps only the changed-file check for a feature branch,
   assert.equal(fast.fast, true);
   assert.deepEqual(fast.checks.map(([, script]) => script), ['./scripts/automation/lint-changed.mjs']);
   assert.deepEqual(pushChecks({ allowed: true, wholeProgram: false }), { fast: false, checks });
+});
+
+test('pre-push whole-program checks stay on unless the committed manifest turns them off', () => {
+  const manifest = (value) => () => JSON.stringify({ validationPolicy: { prePushWholeProgram: value } });
+  assert.equal(wholeProgramOnPush(manifest(false)), false);
+  assert.equal(wholeProgramOnPush(manifest(true)), true);
+  for (const value of ['false', 0, null, undefined]) assert.equal(wholeProgramOnPush(manifest(value)), true, String(value));
+  assert.equal(wholeProgramOnPush(() => '{not json'), true);
+  assert.equal(wholeProgramOnPush(() => { throw new Error('missing at HEAD'); }), true);
+});
+
+test('pre-push fast mode end to end: the committed setting skips the typecheck, an untracked one does not', async (t) => {
+  const root = await createScriptsRepo(t);
+  // hookEnv: an inherited GIT_DIR must not point these commands at the real repository.
+  const git = (...args) => {
+    const result = spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', ...args], { cwd: root, encoding: 'utf8', env: hookEnv(process.env) });
+    assert.equal(result.status, 0, `git ${args.join(' ')}: ${result.stderr}`);
+    return result;
+  };
+  await fs.writeFile(path.join(root, 'scripts/automation/lint-changed.mjs'), "console.log('LINT FAST=' + process.env.PRE_PUSH_FAST);\n");
+  await fs.writeFile(path.join(root, 'scripts/automation/check-project-gates.mjs'), "console.log('TYPECHECK');\n");
+  git('init', '-q', '-b', 'dev');
+  git('commit', '-q', '--allow-empty', '-m', 'base');
+  git('update-ref', 'refs/remotes/origin/dev', 'HEAD');
+  git('checkout', '-q', '-b', 'slice/x');
+  await fs.writeFile(path.join(root, '.gitignore'), 'docs/governance/policy-manifest.json\n');
+  git('add', '.gitignore');
+  git('commit', '-q', '-m', 'ignore the manifest first');
+  await fs.mkdir(path.join(root, 'docs/governance'), { recursive: true });
+  const manifest = path.join(root, 'docs/governance/policy-manifest.json');
+  await fs.writeFile(manifest, JSON.stringify({ validationPolicy: { prePushWholeProgram: false } }));
+  const hook = () => {
+    const sha = git('rev-parse', 'HEAD').stdout.trim();
+    return spawnSync('node', ['scripts/automation/pre-push.mjs', 'origin'], { cwd: root, encoding: 'utf8',
+      input: `refs/heads/slice/x ${sha} refs/heads/slice/x ${'0'.repeat(40)}\n`, env: { ...hookEnv(process.env), VERIFY_PRE_PUSH: '', PRE_PUSH_FAST: '' } });
+  };
+  const untracked = hook();
+  assert.equal(untracked.status, 0, untracked.stderr);
+  assert.match(untracked.stdout, /LINT FAST=undefined\nTYPECHECK/, 'an untracked manifest keeps every check');
+  await fs.writeFile(path.join(root, '.gitignore'), '');
+  git('add', '.gitignore', 'docs/governance/policy-manifest.json');
+  git('commit', '-q', '-m', 'fast mode');
+  const fast = hook();
+  assert.equal(fast.status, 0, fast.stderr);
+  assert.match(fast.stdout, /LINT FAST=1/);
+  assert.doesNotMatch(fast.stdout, /TYPECHECK/);
+  assert.match(fast.stderr, /fast mode checked format and lint only/);
+  const log = await fs.readFile(path.join(root, '.git/pre-push.log'), 'utf8');
+  assert.deepEqual(log.trim().split('\n').map((line) => line.split('\t')[3]), ['pass', 'pass (fast)']);
 });
