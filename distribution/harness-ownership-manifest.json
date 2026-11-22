@@ -10,6 +10,7 @@
   ],
   "projectOwnedGlobs": [
     ".gitignore",
+    ".nvmrc",
     "*.md",
     ".github/CODEOWNERS",
     ".github/actions/**",

@@ -24,9 +24,12 @@ runs:
     # (it has bunfig.toml), needs Bun. Pin a version with bun-version.
     - if: inputs.package-manager == 'bun' || hashFiles('bunfig.toml') != ''
       uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+    # Node 25 and later do not include Corepack, so install a pinned version when it is missing.
     - if: inputs.package-manager == 'pnpm' || inputs.package-manager == 'yarn'
       shell: bash
-      run: corepack enable
+      run: |
+        command -v corepack >/dev/null || npm install --global corepack@0.36.0
+        corepack enable
     # Cache node_modules, not only the package store. The install still runs and repairs a partial restore.
     # `npm ci` deletes node_modules first, so npm caches its package store instead.
     - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

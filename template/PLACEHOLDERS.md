@@ -90,7 +90,7 @@ If a domain does not use billing/credits/payments, keep the placeholder explicit
 
 - `{{CODEOWNERS_DEFAULT_TEAM}}`: `@your-org/platform-engineering`
 - `{{CODEOWNERS_SECURITY_TEAM}}`: `@your-org/security-ops`
-- `{{NODE_VERSION}}`: `24`
+- `{{NODE_VERSION}}`: `26` (active LTS). An existing project can keep `24` (maintenance).
 - `{{CI_INSTALL_COMMAND}}`: `pnpm install --frozen-lockfile` (default), `bun install --frozen-lockfile`, `npm ci`, or `yarn install --immutable`
 - `{{PACKAGE_MANAGER_CACHE}}`: `pnpm` (default), `bun`, `npm`, or `yarn`
 - `{{PACKAGE_MANAGER_LOCKFILE}}`: `pnpm-lock.yaml` (default), `bun.lock`, `package-lock.json`, or `yarn.lock`

@@ -24,6 +24,8 @@ Lint and typecheck run in `Fast Gate`. The build and the unit tests run in paral
 `Fast Gate` sets `PROJECT_GATES_IN_JOBS`, so it does not run these two gates again. Full Gate requires both jobs for code scopes.
 Move migration checks and the tests of other applications out of the slowest job only if the billed minutes do not increase.
 
+New projects use Node 26, the active LTS line. The setup action installs Corepack on Node 26, because Node 25 and later do not include it.
+
 On PRs outside `main`, `Project unit-tests` runs the `affectedCommand` of the `unit-tests` gate, for example `pnpm test --changed origin/dev`.
 The `ci:full` label, PRs into `main`, and merge groups run the full suite.
 If the PR ran only affected tests, Full Gate fails until the `ci:full` run passes. Thus the full suite runs before a change gets to `dev`.
@@ -66,4 +68,5 @@ These tools stay because the replacement loses a capability or saves no time. Me
 - Workflows and harness scripts use `node --run`. It started a script in 87 ms. `npm run` took 220 ms. `bun run` took 67 ms, but CI then needs a Bun setup step.
 - `vue-tsc` stays for `.vue` files. TypeScript 7 cannot check them.
 - ESLint with the Vue plugin stays for `.vue` templates. oxlint has no Vue template rules. The changed-file check runs both linters when both are configured.
+- An ESLint configuration can drop type-aware rules when `PRE_PUSH_FAST=1`. In fast mode, the pre-push hook turns off unused-directive reports, so the directives of the dropped rules do not block the push. See [Daily Workflow](LITE_QUICKSTART.md).
 - Vitest uses jsdom by default. On one Vue project, happy-dom took 234 seconds against 170 seconds for jsdom and failed 216 tests. Measure before you switch.

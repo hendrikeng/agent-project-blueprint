@@ -83,7 +83,8 @@ function validateValues(questionnaire, values) {
   for (const key of expected.filter((value) => value.startsWith('SCORE_'))) {
     if (!/^[1-5]$/.test(values[key])) throw new Error(`${key} must be an integer from 1 to 5.`);
   }
-  if (values.NODE_VERSION !== '24') throw new Error('NODE_VERSION must be 24.');
+  // Node 26 is the active LTS and the default for new projects. Existing projects can stay on the Node 24 maintenance line.
+  if (!['24', '26'].includes(values.NODE_VERSION)) throw new Error('NODE_VERSION must be 26 or 24.');
   const lockfilesByCache = {
     bun: new Set(['bun.lock', 'bun.lockb']),
     npm: new Set(['package-lock.json', 'npm-shrinkwrap.json']),
@@ -214,7 +215,7 @@ async function packagePlan(targetDir, values) {
     } catch (lockError) {
       if (lockError?.code !== 'ENOENT') throw lockError;
     }
-    packageJson = { name, private: true, version: '0.1.0', type: 'module', engines: { node: '>=24 <25' } };
+    packageJson = { name, private: true, version: '0.1.0', type: 'module', engines: { node: `>=${values.NODE_VERSION} <${Number(values.NODE_VERSION) + 1}` } };
     // pnpm and Bun write their lockfile with the first dependency. A frozen install passes without one until then.
     return { packagePath, packageJson, fragment, lockPath: ['pnpm', 'bun'].includes(values.PACKAGE_MANAGER_CACHE) ? null : lockPath, packageManager: values.PACKAGE_MANAGER_CACHE };
   }
