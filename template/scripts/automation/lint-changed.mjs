@@ -150,6 +150,10 @@ if (tools.length === 0) {
 const hookMode = process.env.LINT_CHANGED_TRACKED_ONLY === "1";
 // PRE_PUSH_FAST lets the ESLint configuration drop type-aware rules. Only the pre-push hook (hook mode) can set it.
 if (!hookMode) delete process.env.PRE_PUSH_FAST;
+// Without the type-aware rules, their eslint-disable directives look unused, and --max-warnings 0 would block the push.
+// CI lints without PRE_PUSH_FAST and still reports unused directives. The flag needs ESLint 8.56 or later.
+const eslintTool = tools.find((tool) => tool.id === "eslint");
+if (process.env.PRE_PUSH_FAST === "1" && eslintTool) eslintTool.args.push("--report-unused-disable-directives-severity", "off");
 const baseRef = resolveBaseRef();
 
 // From the pre-push hook, the HEAD^ fallback would check only the last commit of the push.

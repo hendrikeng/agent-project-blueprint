@@ -226,13 +226,16 @@ test('lint-changed passes PRE_PUSH_FAST to the tools only in hook mode', async (
   const rootDir = await fixture(t, {
     'eslint.config.js': 'export default [];\n',
     'node_modules/eslint/package.json': JSON.stringify({ name: 'eslint', bin: { eslint: 'cli.js' } }),
-    'node_modules/eslint/cli.js': "console.log('FAST=' + process.env.PRE_PUSH_FAST);\n"
+    'node_modules/eslint/cli.js': "console.log('FAST=' + process.env.PRE_PUSH_FAST + ' ARGS=' + process.argv.slice(2).join(' '));\n"
   });
   for (const args of [['add', 'changed.js'], ['-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-qm', 'change']]) {
     assert.equal(spawnSync('git', args, { cwd: rootDir }).status, 0);
   }
-  assert.match(run(rootDir, { VERIFY_LINT_BASE: 'HEAD^', PRE_PUSH_FAST: '1' }).stdout, /FAST=undefined/, 'a leaked value is dropped');
-  assert.match(run(rootDir, { VERIFY_LINT_BASE: 'HEAD^', PRE_PUSH_FAST: '1', LINT_CHANGED_TRACKED_ONLY: '1' }).stdout, /FAST=1/);
+  const leaked = run(rootDir, { VERIFY_LINT_BASE: 'HEAD^', PRE_PUSH_FAST: '1' }).stdout;
+  assert.match(leaked, /FAST=undefined ARGS=--max-warnings 0 --no-warn-ignored -- changed\.js/, 'a leaked value is dropped and unused directives still fail');
+  // Fast mode drops type-aware rules, so their disable directives look unused. They must not block the push.
+  const fast = run(rootDir, { VERIFY_LINT_BASE: 'HEAD^', PRE_PUSH_FAST: '1', LINT_CHANGED_TRACKED_ONLY: '1' }).stdout;
+  assert.match(fast, /FAST=1 ARGS=--max-warnings 0 --no-warn-ignored --report-unused-disable-directives-severity off -- changed\.js/);
 });
 
 test('in hook mode an untracked manifest cannot switch a tool to observe mode', async (t) => {
