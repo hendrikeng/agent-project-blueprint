@@ -1,0 +1,25 @@
+# Weekly dependency updates for the blueprint. Minor and patch updates share one pull request per ecosystem.
+# Each major update gets its own pull request, so you can read its changelog first.
+# cooldown matches the pnpm minimumReleaseAge of 1440 minutes in new projects: a new release waits one day.
+version: 2
+updates:
+  # The blueprint has no dependencies today. This entry covers dependencies that a later change adds.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 1
+    groups:
+      npm-minor-patch:
+        update-types: [minor, patch]
+  # The root CI and the starter workflows and setup action in template/ pin actions to commit SHAs.
+  - package-ecosystem: github-actions
+    directories: [/, /template, /template/.github/actions/*]
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 1
+    groups:
+      actions-minor-patch:
+        update-types: [minor, patch]

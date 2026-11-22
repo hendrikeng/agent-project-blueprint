@@ -24,6 +24,8 @@ Lint and typecheck run in `Fast Gate`. The build and the unit tests run in paral
 `Fast Gate` sets `PROJECT_GATES_IN_JOBS`, so it does not run these two gates again. Full Gate requires both jobs for code scopes.
 Move migration checks and the tests of other applications out of the slowest job only if the billed minutes do not increase.
 
+`.github/dependabot.yml` keeps dependencies and action pins current. Every week, Dependabot opens one pull request with the minor and patch updates for each ecosystem.
+Each major update gets its own pull request. The `cooldown` of one day matches the `minimumReleaseAge` of 1440 minutes.
 New projects use Node 26, the active LTS line. The setup action installs Corepack on Node 26, because Node 25 and later do not include it.
 
 On PRs outside `main`, `Project unit-tests` runs the `affectedCommand` of the `unit-tests` gate, for example `pnpm test --changed origin/dev`.
