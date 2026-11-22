@@ -26,6 +26,7 @@ runs:
       uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
     # Node 25 and later do not include Corepack, so install a pinned version next to the selected Node when it is missing.
     # The install runs outside the checkout, so a project .npmrc does not apply, and runs no install scripts.
+    # Dependabot does not read run scripts: update the Corepack version by hand. This step expects a Linux or macOS runner.
     - if: inputs.package-manager == 'pnpm' || inputs.package-manager == 'yarn'
       shell: bash
       run: |

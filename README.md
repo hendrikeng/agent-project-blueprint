@@ -60,7 +60,8 @@ The [completion record](distribution/ci-budget-completion.md) describes the scop
 The public blueprint CI runs an OS and Node matrix on GitHub-hosted runners: Linux and macOS, with Node 24.13.1, the latest Node 24, and the latest Node 26.
 These runners are free for a public repository, and Ubicloud has no macOS runners.
 The blueprint has no dependencies, so its CI runs scripts with `node --run` and needs no package manager.
-Dependabot (`.github/dependabot.yml`) updates the action pins of the root CI and the starter workflows every week.
+Dependabot (`.github/dependabot.yml`) updates the action pins of the root CI and of the starter workflows in `template/` every week.
+Adopted projects own their workflows, so they do not get these updates automatically.
 Starter CI uses the [CI speed defaults](template/docs/ops/automation/CI_SPEED.md): Ubicloud runners, a blobless clone, a seeded `node_modules` cache, pnpm with supply-chain settings, `bun fmt`, oxlint, `bun check`, parallel build and test jobs at a flat billed-minute cost, affected tests on PRs, and time budgets.
 
 ## Start Here

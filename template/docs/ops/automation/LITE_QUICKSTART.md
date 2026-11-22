@@ -38,7 +38,8 @@ Then a feature-branch push runs only the changed-file check with `PRE_PUSH_FAST=
 Without those rules, their `eslint-disable` directives look unused. With `--max-warnings 0`, these reports would block the push.
 For this reason, in fast mode the hook runs ESLint with `--report-unused-disable-directives-severity off`.
 ESLint before 8.56 does not have this flag. With such a version, or if the hook cannot read the ESLint version, the hook does not set the flag. Then unused directives still block the push.
-The flag overrides `linterOptions.reportUnusedDisableDirectives`. CI runs ESLint without `PRE_PUSH_FAST` and still reports unused directives.
+The flag overrides `linterOptions.reportUnusedDisableDirectives`. The CI lint gate runs without `PRE_PUSH_FAST`.
+The CI lint gate must fail on unused directives: use `--max-warnings 0`, or set `reportUnusedDisableDirectives` to `"error"`.
 CI runs the typecheck and the type-aware rules. A gated push to `dev` or `main` still runs every check.
 If the required fast lint gate checks every file and also the formatting, set `validationPolicy.ciLintGateCoversChangedFiles` to `true`.
 Then CI `verify:fast` skips the changed-file check when the same job runs that gate. The CI lint gate must run the type-aware rules: only the hook sets `PRE_PUSH_FAST`.
