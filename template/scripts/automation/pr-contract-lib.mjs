@@ -147,8 +147,9 @@ export function validatePrContract({ headRef, baseRef, title, body, extraRelease
     findings.push(`PRs targeting main must use a release/* source branch; got ${head}.`);
   }
 
-  if (base === "dev" && kind === "other") {
-    findings.push(`PRs targeting dev must use a slice/* or fix/* source branch; got ${head}.`);
+  // Dependabot (.github/dependabot.yml) opens dependency updates into dev from dependabot/* branches, without a PR template.
+  if (base === "dev" && kind === "other" && !head.startsWith("dependabot/")) {
+    findings.push(`PRs targeting dev must use a slice/*, fix/*, or dependabot/* source branch; got ${head}.`);
   }
 
   if (kind === "slice") {

@@ -48,6 +48,16 @@ function packageBin(name) {
   }
 }
 
+// --report-unused-disable-directives-severity exists since ESLint 8.56. Yarn Plug'n'Play has no node_modules: assume a current ESLint.
+function eslintSupportsDirectiveSeverity() {
+  try {
+    const [major, minor] = JSON.parse(readFileSync(path.join("node_modules", "eslint", "package.json"), "utf8")).version.split(".").map(Number);
+    return major > 8 || (major === 8 && minor >= 56);
+  } catch {
+    return true;
+  }
+}
+
 function dependsOn(packageJson, name) {
   return Boolean(
     packageJson.dependencies?.[name] ||
@@ -151,9 +161,11 @@ const hookMode = process.env.LINT_CHANGED_TRACKED_ONLY === "1";
 // PRE_PUSH_FAST lets the ESLint configuration drop type-aware rules. Only the pre-push hook (hook mode) can set it.
 if (!hookMode) delete process.env.PRE_PUSH_FAST;
 // Without the type-aware rules, their eslint-disable directives look unused, and --max-warnings 0 would block the push.
-// CI lints without PRE_PUSH_FAST and still reports unused directives. The flag needs ESLint 8.56 or later.
+// CI lints without PRE_PUSH_FAST and still reports unused directives. Older ESLint versions reject the flag.
 const eslintTool = tools.find((tool) => tool.id === "eslint");
-if (process.env.PRE_PUSH_FAST === "1" && eslintTool) eslintTool.args.push("--report-unused-disable-directives-severity", "off");
+if (process.env.PRE_PUSH_FAST === "1" && eslintTool && eslintSupportsDirectiveSeverity()) {
+  eslintTool.args.push("--report-unused-disable-directives-severity", "off");
+}
 const baseRef = resolveBaseRef();
 
 // From the pre-push hook, the HEAD^ fallback would check only the last commit of the push.

@@ -236,6 +236,10 @@ test('lint-changed passes PRE_PUSH_FAST to the tools only in hook mode', async (
   // Fast mode drops type-aware rules, so their disable directives look unused. They must not block the push.
   const fast = run(rootDir, { VERIFY_LINT_BASE: 'HEAD^', PRE_PUSH_FAST: '1', LINT_CHANGED_TRACKED_ONLY: '1' }).stdout;
   assert.match(fast, /FAST=1 ARGS=--max-warnings 0 --no-warn-ignored --report-unused-disable-directives-severity off -- changed\.js/);
+  // ESLint before 8.56 rejects the flag, so the hook does not pass it.
+  await fs.writeFile(path.join(rootDir, 'node_modules/eslint/package.json'), JSON.stringify({ name: 'eslint', version: '8.55.0', bin: { eslint: 'cli.js' } }));
+  const old = run(rootDir, { VERIFY_LINT_BASE: 'HEAD^', PRE_PUSH_FAST: '1', LINT_CHANGED_TRACKED_ONLY: '1' }).stdout;
+  assert.match(old, /FAST=1 ARGS=--max-warnings 0 --no-warn-ignored -- changed\.js/);
 });
 
 test('in hook mode an untracked manifest cannot switch a tool to observe mode', async (t) => {

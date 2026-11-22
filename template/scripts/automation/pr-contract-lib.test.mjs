@@ -3,9 +3,14 @@ import assert from 'node:assert/strict';
 import { localVerificationWarnings, validatePrContract } from './pr-contract-lib.mjs';
 
 test('only release branches can target main', () => {
-  for (const headRef of ['dev', 'slice/example', 'fix/example']) {
+  for (const headRef of ['dev', 'slice/example', 'fix/example', 'dependabot/npm_and_yarn/npm-minor-patch-1a2b']) {
     assert.match(validatePrContract({ headRef, baseRef: 'main', title: '', body: '' }).join('\n'), /release\/\*/);
   }
+});
+
+test('Dependabot updates can target dev, other unknown branches cannot', () => {
+  assert.deepEqual(validatePrContract({ headRef: 'dependabot/github_actions/actions-minor-patch-1a2b', baseRef: 'dev', title: 'Bump actions', body: 'Bumps actions.' }), []);
+  assert.match(validatePrContract({ headRef: 'feature/x', baseRef: 'dev', title: '', body: '' }).join('\n'), /slice\/\*, fix\/\*, or dependabot\/\*/);
 });
 
 const releaseBody = `## Release Contract

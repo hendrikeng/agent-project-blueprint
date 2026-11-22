@@ -42,7 +42,7 @@ for (const owner of ['@acme/platform', '@hendrikeng']) test(`bootstrap configure
   const workflow = await fs.readFile(path.join(targetDir, '.github', 'workflows', 'ci.yml'), 'utf8');
   assert.equal(workflow.includes(`CI_INSTALL_COMMAND: ${JSON.stringify('pnpm --filter "@acme/*\\tools" install')}`), true);
   const setup = await fs.readFile(path.join(targetDir, '.github', 'actions', 'setup', 'action.yml'), 'utf8');
-  assert.match(setup, /- if: inputs.package-manager == 'pnpm' \|\| inputs.package-manager == 'yarn'\n\s+shell: bash\n\s+run: \|\n\s+command -v corepack >\/dev\/null \|\| npm install --global corepack@\d+\.\d+\.\d+\n\s+corepack enable\n/, 'Node 26 has no bundled Corepack');
+  assert.match(setup, /- if: inputs.package-manager == 'pnpm' \|\| inputs.package-manager == 'yarn'\n\s+shell: bash\n\s+run: \|\n[^\n]+\n\s+\[ -x "\$node_bin\/corepack" \] \|\| \(cd "\$RUNNER_TEMP" && npm install --global --ignore-scripts corepack@\d+\.\d+\.\d+\)\n\s+"\$node_bin\/corepack" enable\n/, 'Node 26 has no bundled Corepack');
   assert.equal(workflow.match(/- uses: \.\/\.github\/actions\/setup/g)?.length, 4);
   assert.match(workflow, /pull_request:\s+branches: \[dev, main\]\s+types: \[opened, synchronize, reopened, edited, ready_for_review, labeled\]/);
   assert.match(workflow, /merge_group:\s+branches: \[main\]\s+types: \[checks_requested\]/);

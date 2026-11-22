@@ -4,7 +4,7 @@
 # Updates enter the dev integration branch, like slice and fix pull requests.
 version: 2
 updates:
-  # npm also covers pnpm and Yarn. For a Bun project, change npm to bun.
+  # npm also covers pnpm and Yarn. It does not update bun.lock: for a Bun project, change npm to bun.
   - package-ecosystem: npm
     directory: /
     target-branch: dev
