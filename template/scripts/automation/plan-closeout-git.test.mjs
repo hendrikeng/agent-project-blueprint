@@ -185,3 +185,27 @@ test('Git closeout preserves inherited work across commits and validates both st
   git('commit', '-m', 'fixture final pushed commit');
   fail(/new or changed active/, await pushContext(beforePush));
 });
+
+test('a local closeout prediction applies the rules of the target branch', async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'closeout-target-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const env = { ...process.env, GIT_AUTHOR_NAME: 'Fixture', GIT_AUTHOR_EMAIL: 'fixture@example.test', GIT_COMMITTER_NAME: 'Fixture', GIT_COMMITTER_EMAIL: 'fixture@example.test' };
+  for (const key of Object.keys(env)) if (key.startsWith('GITHUB_') || key.startsWith('PLAN_CLOSEOUT_')) delete env[key];
+  const git = (...args) => spawnSync('git', args, { cwd: root, env, encoding: 'utf8' }).stdout.trim();
+  await fs.cp(scripts, path.join(root, 'scripts/automation'), { recursive: true });
+  await fs.mkdir(path.join(root, 'docs/exec-plans/active'), { recursive: true });
+  await fs.writeFile(path.join(root, 'docs/exec-plans/active/README.md'), '# Active\n');
+  git('init', '-q', '-b', 'dev');
+  git('add', '.');
+  git('commit', '-q', '-m', 'base');
+  const base = git('rev-parse', 'HEAD');
+  git('checkout', '-q', '-b', 'slice/x');
+  await fs.writeFile(path.join(root, 'docs/exec-plans/active/open.md'), '# Open\n\n- Plan-ID: open\n- Status: active\n');
+  git('add', '.');
+  git('commit', '-q', '-m', 'open plan');
+  const check = (extra) => spawnSync(process.execPath, ['scripts/automation/check-plan-closeout.mjs'], { cwd: root, env: { ...env, PLAN_CLOSEOUT_BASE_REF: base, ...extra }, encoding: 'utf8' });
+  const predicted = check({ PLAN_CLOSEOUT_BRANCH_NAME: 'dev' });
+  assert.equal(predicted.status, 1, predicted.stdout);
+  assert.match(predicted.stderr, /dev cannot retain new or changed active execution plans/);
+  assert.doesNotMatch(check({}).stderr, /cannot retain new or changed active/, 'the feature branch itself can keep an active plan');
+});

@@ -41,12 +41,14 @@ for (const owner of ['@acme/platform', '@hendrikeng']) test(`bootstrap configure
   assert.equal(JSON.stringify(projectGates).includes('eslint \\"src/**/*.ts\\"'), true);
   const workflow = await fs.readFile(path.join(targetDir, '.github', 'workflows', 'ci.yml'), 'utf8');
   assert.equal(workflow.includes(`CI_INSTALL_COMMAND: ${JSON.stringify('pnpm --filter "@acme/*\\tools" install')}`), true);
-  assert.equal(workflow.match(/- run: corepack enable/g)?.length, 2);
+  const setup = await fs.readFile(path.join(targetDir, '.github', 'actions', 'setup', 'action.yml'), 'utf8');
+  assert.match(setup, /- if: inputs.package-manager == 'pnpm' \|\| inputs.package-manager == 'yarn'\n\s+shell: bash\n\s+run: corepack enable/);
+  assert.equal(workflow.match(/- uses: \.\/\.github\/actions\/setup/g)?.length, 4);
   assert.match(workflow, /pull_request:\s+branches: \[dev, main\]\s+types: \[opened, synchronize, reopened, edited, ready_for_review, labeled\]/);
   assert.match(workflow, /merge_group:\s+branches: \[main\]\s+types: \[checks_requested\]/);
-  assert.doesNotMatch(workflow, /^  push:/m);
-  assert.match(workflow, /needs: \[scope, fast-gate, release-candidate-gate\]\s+if: >-\s+always\(\)/);
-  assert.match(workflow, /npm run verify:full -- --skip-fast\s+id: full\s+if: \(needs.scope.outputs.scope == 'full' \|\| \(github.event_name == 'pull_request' && \(needs.scope.outputs.scope == 'broad' \|\| needs.scope.outputs.scope == 'harness'\)\)\) && \(github.event_name == 'merge_group' \|\| github.event.label.name == 'ci:full'\)/);
+  assert.doesNotMatch(workflow, /^ {2}push:/m);
+  assert.match(workflow, /needs: \[scope, fast-gate, release-candidate-gate, project-gate, unit-tests\]\s+if: >-\s+always\(\)/);
+  assert.match(workflow, /node --run verify:full -- --skip-fast\s+id: full\s+if: \(needs.scope.outputs.scope == 'full' \|\| \(github.event_name == 'pull_request' && \(needs.scope.outputs.scope == 'broad' \|\| needs.scope.outputs.scope == 'harness'\)\)\) && \(github.event_name == 'merge_group' \|\| github.event.label.name == 'ci:full'\)/);
   for (const name of ['pr-draft.yml', 'ci-full-label.yml']) await fs.access(path.join(targetDir, '.github/workflows', name));
   assert.match(workflow, /'Metadata Result' \|\| 'Full Gate'/);
   const candidate = await fs.readFile(path.join(targetDir, '.github/workflows/ci-candidate.yml'), 'utf8');
@@ -101,17 +103,26 @@ test('reviewed project ownership releases retired decisions without inventing a 
 });
 
 test('bootstrap configure accepts matching source files without Git metadata', async (t) => {
-  const targetDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bootstrap-configure-no-git-'));
-  t.after(() => fs.rm(targetDir, { recursive: true, force: true }));
-  const env = { ...process.env, PATH: path.dirname(process.execPath) };
-  assert.equal(spawnSync(process.execPath, [harnessSyncPath, 'install', '--target', targetDir], { env }).status, 0);
-  const packetPath = path.join(targetDir, 'docs', 'ops', 'automation', 'bootstrap-decisions.json');
-  await fs.writeFile(packetPath, JSON.stringify(await decisions()), 'utf8');
+  // pnpm and Bun write the lockfile with the first dependency, so new projects start without one.
+  for (const [manager, install, lockfile] of [['npm', 'npm ci', 'package-lock.json'], ['pnpm', 'pnpm install --frozen-lockfile', 'pnpm-lock.yaml'], ['bun', 'bun install --frozen-lockfile', 'bun.lock']]) {
+    await t.test(manager, async (t) => {
+      const targetDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bootstrap-configure-no-git-'));
+      t.after(() => fs.rm(targetDir, { recursive: true, force: true }));
+      const env = { ...process.env, PATH: path.dirname(process.execPath) };
+      assert.equal(spawnSync(process.execPath, [harnessSyncPath, 'install', '--target', targetDir], { env }).status, 0);
+      const packetPath = path.join(targetDir, 'docs', 'ops', 'automation', 'bootstrap-decisions.json');
+      const packet = await decisions();
+      Object.assign(packet.values, { CI_INSTALL_COMMAND: install, PACKAGE_MANAGER_CACHE: manager, PACKAGE_MANAGER_LOCKFILE: lockfile });
+      await fs.writeFile(packetPath, JSON.stringify(packet), 'utf8');
 
-  const result = spawnSync(process.execPath, [scriptPath, '--target', targetDir, '--decisions', packetPath], { encoding: 'utf8', env });
-  assert.equal(result.status, 0, result.stderr);
-  const lockfile = JSON.parse(await fs.readFile(path.join(targetDir, 'package-lock.json'), 'utf8'));
-  assert.equal(lockfile.lockfileVersion, 3);
+      const result = spawnSync(process.execPath, [scriptPath, '--target', targetDir, '--decisions', packetPath], { encoding: 'utf8', env });
+      assert.equal(result.status, 0, result.stderr);
+      if (manager === 'npm') assert.equal(JSON.parse(await fs.readFile(path.join(targetDir, lockfile), 'utf8')).lockfileVersion, 3);
+      else await assert.rejects(fs.access(path.join(targetDir, lockfile)), { code: 'ENOENT' });
+      const workspace = await fs.readFile(path.join(targetDir, 'pnpm-workspace.yaml'), 'utf8').catch(() => null);
+      assert.equal(workspace, manager === 'pnpm' ? 'minimumReleaseAge: 1440\nstrictPeerDependencies: true\nengineStrict: true\n' : null);
+    });
+  }
 });
 
 test('bootstrap configure reports edited template placeholders before writing any replacements', async (t) => {
@@ -232,7 +243,7 @@ test('bootstrap configure rejects unsupported packet versions and invalid dates'
   await fs.writeFile(packetPath, JSON.stringify(packet), 'utf8');
   result = spawnSync(process.execPath, [scriptPath, '--target', targetDir, '--decisions', packetPath], { encoding: 'utf8' });
   assert.equal(result.status, 1);
-  assert.match(result.stderr, /must describe the same npm, pnpm, or yarn toolchain/);
+  assert.match(result.stderr, /must describe the same Bun, npm, pnpm, or yarn toolchain/);
 
   packet.values.PACKAGE_MANAGER_CACHE = 'npm';
   packet.values.SUMMARY = '{{UNKNOWN_VALUE}}';

@@ -46,6 +46,10 @@
           "command": {
             "type": "string"
           },
+          "affectedCommand": {
+            "type": "string",
+            "description": "Optional. Pull requests run this command to select only what the diff can reach. The full command runs before integration."
+          },
           "rationale": {
             "type": "string",
             "minLength": 16

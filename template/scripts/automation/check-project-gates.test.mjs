@@ -183,3 +183,65 @@ test('local gate runs take an agent-heavy slot unless CI, opt-out, or no agent-h
     });
   }
 });
+
+test('CI runs one gate per job, selects affected tests, and profile runs skip the gates that jobs own', async (t) => {
+  const gates = baselineGates.map((gate) => ({ ...gate, command: `node ${gate.id}.mjs` }));
+  gates[2].affectedCommand = 'node affected.mjs';
+  const rootDir = await createFixtureRoot(t, gates);
+  for (const id of ['lint', 'typecheck', 'unit-tests', 'build', 'affected']) {
+    await fs.writeFile(path.join(rootDir, `${id}.mjs`), `console.log('${id.toUpperCase()}-EXECUTED');`);
+  }
+  const output = path.join(rootDir, 'github-output');
+  const run = (args, env = {}) => spawnSync('node', [scriptPath, ...args], { cwd: rootDir, encoding: 'utf8', env: { ...process.env, CI: 'true', GITHUB_OUTPUT: output, ...env } });
+
+  const lint = run(['--gate', 'lint', '--run']);
+  assert.equal(lint.status, 0, lint.stderr);
+  assert.match(lint.stdout, /LINT-EXECUTED/);
+  assert.doesNotMatch(lint.stdout, /TYPECHECK-EXECUTED|UNIT-TESTS-EXECUTED/);
+  assert.equal(run(['--gate', 'missing', '--run']).status, 1);
+
+  await fs.writeFile(output, '');
+  const affected = run(['--gate', 'unit-tests', '--run', '--affected']);
+  assert.match(affected.stdout, /AFFECTED-EXECUTED/);
+  assert.doesNotMatch(affected.stdout, /UNIT-TESTS-EXECUTED/);
+  const full = run(['--gate', 'unit-tests', '--run']);
+  assert.match(full.stdout, /UNIT-TESTS-EXECUTED/);
+  const typecheck = run(['--gate', 'typecheck', '--run', '--affected']);
+  assert.match(typecheck.stdout, /TYPECHECK-EXECUTED/, 'a gate without affectedCommand runs in full');
+  assert.equal(await fs.readFile(output, 'utf8'), 'selection=affected\nselection=full\n');
+
+  const fast = run(['--profile', 'fast', '--run'], { PROJECT_GATES_IN_JOBS: 'lint,unit-tests' });
+  assert.equal(fast.status, 0, fast.stderr);
+  assert.match(fast.stdout, /lint runs in its own CI job[\s\S]*unit-tests runs in its own CI job/);
+  assert.match(fast.stdout, /TYPECHECK-EXECUTED/);
+  assert.doesNotMatch(fast.stdout, /LINT-EXECUTED|UNIT-TESTS-EXECUTED/);
+});
+
+test('affected commands get the same checks as commands, and aggregate commands are rejected for every runner', async (t) => {
+  for (const [name, patch, expected] of [
+    ['affected no-op', { affectedCommand: 'true' }, /uses a no-op command/],
+    ['affected on a deferred gate', { status: 'deferred', command: '', affectedCommand: 'node x.mjs' }, /affectedCommand only as a string on a required gate/],
+    ['bun aggregate', { command: 'bun run verify:fast' }, /recursive aggregate command/],
+    ['node --run aggregate', { command: 'node --run verify:full' }, /recursive aggregate command/]
+  ]) {
+    await t.test(name, async (t) => {
+      const gates = baselineGates.map((gate) => ({ ...gate }));
+      Object.assign(gates[2], patch);
+      const rootDir = await createFixtureRoot(t, gates);
+      const result = spawnSync('node', [scriptPath], { cwd: rootDir, encoding: 'utf8' });
+      assert.equal(result.status, 1);
+      assert.match(result.stderr, expected);
+    });
+  }
+});
+
+test('an empty affectedCommand means no selection, and --affected needs one gate', async (t) => {
+  const gates = baselineGates.map((gate) => ({ ...gate }));
+  Object.assign(gates[2], { status: 'deferred', command: '', affectedCommand: '', rationale: 'No unit test runner exists in this fixture yet.' });
+  const rootDir = await createFixtureRoot(t, gates);
+  const valid = spawnSync('node', [scriptPath], { cwd: rootDir, encoding: 'utf8' });
+  assert.equal(valid.status, 0, valid.stderr);
+  const profile = spawnSync('node', [scriptPath, '--profile', 'fast', '--affected'], { cwd: rootDir, encoding: 'utf8' });
+  assert.equal(profile.status, 1);
+  assert.match(profile.stderr, /--affected needs --gate/);
+});

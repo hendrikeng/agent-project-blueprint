@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { metadataValue, releaseSourceBoundary, isValidReleaseVersion } from './release-support-lib.mjs';
+import { metadataValue, releaseSourceBoundary, isValidReleaseVersion, markdownText } from './release-support-lib.mjs';
 import { execFileSync } from 'node:child_process';
 import { writeFile, mkdir, rm, symlink } from 'node:fs/promises';
 import path from 'node:path';
@@ -190,6 +190,36 @@ Recovery regression passed.
   assert.match(analyze().findings.join('\n'), /nonempty changed regular Done-Evidence/);
 });
 
+test('release changelog lists first-parent commits of the range with their PR numbers', async (t) => {
+  const rootDir = await createTemplateRepo(t);
+  const git = (...args) => execFileSync('git', args, { cwd: rootDir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  const commit = (subject) => git('commit', '--allow-empty', '-m', subject, '--author', 'Some Author <author@example.com>');
+  const base = git('rev-parse', 'HEAD');
+  commit('fix(ui): first change (#12)');
+  commit('chore: no pull request');
+  const dev = git('rev-parse', '--abbrev-ref', 'HEAD');
+  git('checkout', '-q', '-b', 'side');
+  commit('side work (#99)');
+  git('checkout', '-q', dev);
+  git('merge', '-q', '--no-ff', 'side', '-m', 'Merge the side work (#13)');
+  const result = runNode('--input-type=module', ['-e',
+    'import {analyzeReleaseRange} from "./scripts/automation/release-support-lib.mjs"; console.log(JSON.stringify(analyzeReleaseRange(["--allow-any-branch"]).changelog));'
+  ], rootDir, { RELEASE_BASE_REF: base, RELEASE_HEAD_REF: 'HEAD', GITHUB_HEAD_REF: '' });
+  assert.equal(result.status, 0, String(result.stderr));
+  assert.deepEqual(JSON.parse(result.stdout), [
+    { author: 'Some Author', subject: 'fix(ui): first change', pr: '12' },
+    { author: 'Some Author', subject: 'chore: no pull request', pr: '' },
+    { author: 'Harness Fixture', subject: 'Merge the side work', pr: '13' }
+  ]);
+});
+
 test('release metadata parser remains compatible with unbulleted metadata', () => {
   assert.equal(metadataValue('Plan-ID: legacy-plan\n', 'Plan-ID'), 'legacy-plan');
+});
+
+test('release notes escape contributor text', () => {
+  assert.equal(markdownText('Fix [login](https://evil.example) @org/team <img src=x>'),
+    'Fix \\[login\\]\\(https:\u200b//evil.example\\) @\u200borg/team \\<img src=x\\>');
+  assert.equal(markdownText('see www.evil.example and &#64;team'), 'see www\u200b.evil.example and \\&\\#64;team');
+  assert.equal(markdownText('docs _www.evil.example'), 'docs \\_www\u200b.evil.example');
 });

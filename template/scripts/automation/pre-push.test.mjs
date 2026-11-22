@@ -4,21 +4,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 
-import { prePushScope, pushedBranches } from './pre-push.mjs';
+import { checks, hookEnv, lintBase, protectedPushError, pushChecks, pushedBranches, wholeProgramOnPush } from './pre-push.mjs';
 import { createScriptsRepo } from './test-helpers.mjs';
-
-const change = (filePath) => ({ status: 'M', path: filePath });
-
-// The classifier is project-owned, so these tests use stubs instead of its categories.
-test('pre-push selects the local classifier scope only on feature branches', () => {
-  const entries = [{ status: 'M', path: 'src/card.ts' }];
-  for (const branch of ['', 'HEAD', 'dev', 'main', 'release/2026.01.01.1']) {
-    assert.equal(prePushScope(branch, entries, () => 'product'), null, branch);
-  }
-  for (const scope of ['product', 'docs', 'harness']) assert.equal(prePushScope('slice/x', entries, () => scope), scope);
-  assert.equal(prePushScope('fix/x', entries, () => 'full'), 'broad');
-  assert.equal(prePushScope('fix/x', [], () => 'unexpected'), 'broad');
-});
 
 test('pre-push reads pushed branches from Git and ignores deletions and tags', () => {
   const sha = 'a'.repeat(40);
@@ -30,52 +17,168 @@ test('pre-push reads pushed branches from Git and ignores deletions and tags', (
     `refs/heads/gone ${zero} refs/heads/gone ${sha}`,
     `refs/tags/v1 ${sha} refs/tags/v1 ${zero}`,
     ''
-  ].join('\n')), [{ branch: 'slice/x', sha }, { branch: 'fix/y', sha }]);
+  ].join('\n')), [
+    { branch: 'slice/x', sha, remoteSha: zero, exists: false, deleted: false },
+    { branch: 'fix/y', sha, remoteSha: zero, exists: false, deleted: false },
+    { branch: 'old', sha: zero, remoteSha: sha, exists: true, deleted: true },
+    { branch: 'gone', sha: zero, remoteSha: sha, exists: true, deleted: true }
+  ]);
 });
 
-test('pre-push logs a failed fast gate and still lets the push continue', async (t) => {
+test('pre-push blocks a failed check on the checked-out feature branch and logs each push', async (t) => {
   const root = await createScriptsRepo(t);
-  const git = (...args) => spawnSync('git', args, { cwd: root, encoding: 'utf8' });
-  await fs.writeFile(path.join(root, 'scripts/ci/classify-change.mjs'), "export const classifyChanges = (entries) => entries.some(({ path }) => path === 'src/card.ts') ? 'product' : 'broad';\n");
-  await fs.writeFile(path.join(root, 'package.json'), JSON.stringify({
-    scripts: { 'verify:fast': 'node -e "console.log(process.argv.slice(1).join(\' \'), \'GIT_DIR=\' + process.env.GIT_DIR); process.exitCode = 3" --' }
-  }));
+  // hookEnv: an inherited GIT_DIR must not point these commands at the real repository.
+  const git = (...args) => spawnSync('git', args, { cwd: root, encoding: 'utf8', env: hookEnv(process.env) });
+  // Stub checks: lint-changed fails while FAIL_LINT is set. The typecheck gate prints GIT_DIR.
+  await fs.writeFile(path.join(root, 'scripts/automation/lint-changed.mjs'), "console.log('LINT', process.env.LINT_CHANGED_TRACKED_ONLY, process.env.VERIFY_LINT_BASE); process.exitCode = process.env.FAIL_LINT ? 3 : 0;\n");
+  await fs.writeFile(path.join(root, 'scripts/automation/check-project-gates.mjs'), "console.log('TYPECHECK', process.argv.slice(2).join(' '), 'GIT_DIR=' + process.env.GIT_DIR);\n");
   git('init', '-q', '-b', 'dev');
   git('-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-q', '--allow-empty', '-m', 'base');
-  git('update-ref', 'refs/remotes/origin/dev', 'HEAD');
+  const baseSha = git('rev-parse', 'HEAD').stdout.trim();
+  git('update-ref', 'refs/remotes/origin/dev', baseSha);
   git('checkout', '-q', '-b', 'slice/x');
   await fs.mkdir(path.join(root, 'src'));
   await fs.writeFile(path.join(root, 'src/card.ts'), 'export {};\n');
   git('add', 'src/card.ts');
   git('-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-q', '-m', 'card');
   const sha = git('rev-parse', 'HEAD').stdout.trim();
-  const logPath = path.join(root, '.git/verify-fast-pre-push.log');
+  const logPath = path.join(root, '.git/pre-push.log');
 
   const hook = (input, extraEnv = {}) => spawnSync('node', ['scripts/automation/pre-push.mjs'], {
-    cwd: root, encoding: 'utf8', input, env: { ...process.env, VERIFY_PRE_PUSH: '', ...extraEnv }
+    cwd: root, encoding: 'utf8', input, env: { ...hookEnv(process.env), VERIFY_PRE_PUSH: '', FAIL_LINT: '', ...extraEnv }
   });
   const pushSlice = `refs/heads/slice/x ${sha} refs/heads/slice/x ${'0'.repeat(40)}\n`;
 
-  const failed = hook(pushSlice, { GIT_DIR: path.join(root, '.git') });
-  assert.equal(failed.status, 0, failed.stderr);
-  assert.match(failed.stdout, /--scope product GIT_DIR=undefined/);
-  assert.equal(hook(pushSlice, { VERIFY_PRE_PUSH: 'skip' }).status, 0);
+  const passed = hook(pushSlice, { GIT_DIR: path.join(root, '.git') });
+  assert.equal(passed.status, 0, passed.stderr);
+  // A new branch is checked against the integration branch.
+  assert.match(passed.stdout, /LINT 1 origin\/dev\nTYPECHECK --gate typecheck --run GIT_DIR=undefined/);
+  // An existing remote branch is also checked against the integration branch: an earlier push can have skipped the checks.
+  const update = hook(`refs/heads/slice/x ${sha} refs/heads/slice/x ${baseSha}\n`);
+  assert.equal(update.status, 0, update.stderr);
+  assert.match(update.stdout, /LINT 1 origin\/dev/);
+  assert.equal(hook(`refs/heads/slice/x ${sha} refs/heads/slice/x abc\n`).status, 1, 'an unparsable branch line fails closed');
+  const failed = hook(pushSlice, { FAIL_LINT: '1' });
+  assert.equal(failed.status, 1);
+  assert.doesNotMatch(failed.stdout, /TYPECHECK/, 'the first failure stops the checks');
+  const skipped = hook(pushSlice, { VERIFY_PRE_PUSH: 'skip', FAIL_LINT: '1' });
+  assert.equal(skipped.status, 0);
+  assert.match(skipped.stderr, /WARNING: slice\/x was pushed without format, lint, and typecheck checks \(skipped\)/);
   await fs.writeFile(path.join(root, 'src/card.ts'), 'export const dirty = 1;\n');
-  assert.doesNotMatch(hook(pushSlice).stdout, /--scope/, 'the gate checks the working tree, not the pushed commit');
+  assert.equal(hook(pushSlice, { FAIL_LINT: '1' }).status, 0, 'the checks read the working tree, not the pushed commit');
   git('checkout', '-q', '--', 'src/card.ts');
   git('checkout', '-q', 'dev');
-  const elsewhere = hook(pushSlice);
-  assert.equal(elsewhere.status, 0, elsewhere.stderr);
-  assert.doesNotMatch(elsewhere.stdout, /--scope/, 'the gate checks the working tree, not the pushed commit');
-  // A protected branch writes nothing, even without an origin/dev ref.
-  git('update-ref', '-d', 'refs/remotes/origin/dev');
+  assert.equal(hook(pushSlice, { FAIL_LINT: '1' }).status, 0, 'the checks read the working tree, not the pushed commit');
   const devSha = git('rev-parse', 'HEAD').stdout.trim();
+  // The first push creates dev. A push to an existing dev is refused unless the logged escape is set.
   assert.equal(hook(`refs/heads/dev ${devSha} refs/heads/dev ${'0'.repeat(40)}\n`).status, 0);
+  // The remote dev is the same commit, so the escape sees a fast-forward.
+  const existing = `refs/heads/dev ${devSha} refs/heads/dev ${devSha}\n`;
+  const direct = hook(existing);
+  assert.equal(direct.status, 1);
+  assert.match(direct.stderr, /Direct pushes to dev are not allowed/);
+  assert.equal(hook(existing, { ALLOW_PROTECTED_PUSH: '1' }).status, 0);
+  // The gated fallback still runs format, lint, and typecheck: a failing check stops it.
+  const gated = hook(existing, { ALLOW_PROTECTED_PUSH: '1', FAIL_LINT: '1' });
+  assert.equal(gated.status, 1);
+  // The gated push is linted against the remote tip that it fast-forwards.
+  assert.match(gated.stdout, new RegExp(`LINT 1 ${devSha}`));
+  // Without the checks, the escape is refused.
+  assert.equal(hook(existing, { ALLOW_PROTECTED_PUSH: '1', VERIFY_PRE_PUSH: 'skip' }).status, 1);
   const lines = (await fs.readFile(logPath, 'utf8')).trim().split('\n').map((line) => line.split('\t'));
-  assert.deepEqual(lines.map((fields) => fields.slice(1, 5)), [
-    [sha, 'slice/x', 'product', 'fail'],
-    [sha, 'slice/x', '', 'skipped'],
-    [sha, 'slice/x', '', 'skipped: uncommitted changes'],
-    [sha, 'slice/x', '', 'skipped: not checked out']
-  ], 'dev pushes run no gate and write no line');
+  assert.deepEqual(lines.map((fields) => fields.slice(1, 4)), [
+    [sha, 'slice/x', 'pass'],
+    [sha, 'slice/x', 'pass'],
+    [sha, 'slice/x', 'fail: ./scripts/automation/lint-changed.mjs'],
+    [sha, 'slice/x', 'skipped'],
+    [sha, 'slice/x', 'skipped: uncommitted changes'],
+    [sha, 'slice/x', 'skipped: not checked out'],
+    [devSha, 'dev', 'pass'],
+    [devSha, 'dev', 'allowed: ALLOW_PROTECTED_PUSH'],
+    [devSha, 'dev', 'fail: ./scripts/automation/lint-changed.mjs'],
+    [devSha, 'dev', 'fail: ALLOW_PROTECTED_PUSH needs the checks (skipped)']
+  ], 'only the gated escape checks and logs a dev push');
+});
+
+test('pre-push checks do not inherit Git variables of the hook, also not git -c settings', () => {
+  const env = hookEnv({ PATH: '/bin', GIT_DIR: '.git', GIT_CONFIG_PARAMETERS: "'core.hooksPath'='x'", GIT_CONFIG_COUNT: '1',
+    GIT_CONFIG_KEY_0: 'user.name', GIT_CONFIG_VALUE_0: 't', GIT_AUTHOR_NAME: 'kept' });
+  assert.deepEqual(env, { PATH: '/bin', GIT_AUTHOR_NAME: 'kept' });
+});
+
+test('pre-push protects dev and main from direct pushes, deletions, and non-fast-forward escapes', () => {
+  const [local, remote, zero] = ['a'.repeat(40), 'b'.repeat(40), '0'.repeat(40)];
+  const push = (branch, fields) => ({ branch, sha: local, remoteSha: remote, exists: true, deleted: false, ...fields });
+  const forward = () => true;
+  const rewrite = () => false;
+  assert.equal(protectedPushError(push('slice/x'), false, forward), '');
+  assert.equal(protectedPushError(push('main', { remoteSha: zero, exists: false }), false, forward), '', 'the first push creates main');
+  assert.match(protectedPushError(push('main'), false, forward), /Direct pushes to main are not allowed/);
+  assert.equal(protectedPushError(push('main'), true, forward), '');
+  assert.match(protectedPushError(push('main'), true, rewrite), /only a fast-forward/);
+  assert.match(protectedPushError(push('dev', { sha: zero, deleted: true }), true, forward), /Deleting dev is not allowed/);
+});
+
+test('pre-push takes the lint base from the remote that receives the push', () => {
+  const refs = new Set(['upstream/HEAD', 'origin/dev']);
+  assert.equal(lintBase('upstream', (ref) => refs.has(ref)), 'upstream/HEAD');
+  assert.equal(lintBase('origin', (ref) => refs.has(ref)), 'origin/dev');
+  assert.equal(lintBase('empty', (ref) => refs.has(ref)), '', 'no remote history: lint-changed checks every tracked file');
+});
+
+test('pre-push fast mode keeps only the changed-file check for a feature branch, never for a gated push', () => {
+  assert.deepEqual(pushChecks({ allowed: false, wholeProgram: true }), { fast: false, checks });
+  const fast = pushChecks({ allowed: false, wholeProgram: false });
+  assert.equal(fast.fast, true);
+  assert.deepEqual(fast.checks.map(([, script]) => script), ['./scripts/automation/lint-changed.mjs']);
+  assert.deepEqual(pushChecks({ allowed: true, wholeProgram: false }), { fast: false, checks });
+});
+
+test('pre-push whole-program checks stay on unless the committed manifest turns them off', () => {
+  const manifest = (value) => () => JSON.stringify({ validationPolicy: { prePushWholeProgram: value } });
+  assert.equal(wholeProgramOnPush(manifest(false)), false);
+  assert.equal(wholeProgramOnPush(manifest(true)), true);
+  for (const value of ['false', 0, null, undefined]) assert.equal(wholeProgramOnPush(manifest(value)), true, String(value));
+  assert.equal(wholeProgramOnPush(() => '{not json'), true);
+  assert.equal(wholeProgramOnPush(() => { throw new Error('missing at HEAD'); }), true);
+});
+
+test('pre-push fast mode end to end: the committed setting skips the typecheck, an untracked one does not', async (t) => {
+  const root = await createScriptsRepo(t);
+  // hookEnv: an inherited GIT_DIR must not point these commands at the real repository.
+  const git = (...args) => {
+    const result = spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', ...args], { cwd: root, encoding: 'utf8', env: hookEnv(process.env) });
+    assert.equal(result.status, 0, `git ${args.join(' ')}: ${result.stderr}`);
+    return result;
+  };
+  await fs.writeFile(path.join(root, 'scripts/automation/lint-changed.mjs'), "console.log('LINT FAST=' + process.env.PRE_PUSH_FAST);\n");
+  await fs.writeFile(path.join(root, 'scripts/automation/check-project-gates.mjs'), "console.log('TYPECHECK');\n");
+  git('init', '-q', '-b', 'dev');
+  git('commit', '-q', '--allow-empty', '-m', 'base');
+  git('update-ref', 'refs/remotes/origin/dev', 'HEAD');
+  git('checkout', '-q', '-b', 'slice/x');
+  await fs.writeFile(path.join(root, '.gitignore'), 'docs/governance/policy-manifest.json\n');
+  git('add', '.gitignore');
+  git('commit', '-q', '-m', 'ignore the manifest first');
+  await fs.mkdir(path.join(root, 'docs/governance'), { recursive: true });
+  const manifest = path.join(root, 'docs/governance/policy-manifest.json');
+  await fs.writeFile(manifest, JSON.stringify({ validationPolicy: { prePushWholeProgram: false } }));
+  const hook = () => {
+    const sha = git('rev-parse', 'HEAD').stdout.trim();
+    return spawnSync('node', ['scripts/automation/pre-push.mjs', 'origin'], { cwd: root, encoding: 'utf8',
+      input: `refs/heads/slice/x ${sha} refs/heads/slice/x ${'0'.repeat(40)}\n`, env: { ...hookEnv(process.env), VERIFY_PRE_PUSH: '', PRE_PUSH_FAST: '' } });
+  };
+  const untracked = hook();
+  assert.equal(untracked.status, 0, untracked.stderr);
+  assert.match(untracked.stdout, /LINT FAST=undefined\nTYPECHECK/, 'an untracked manifest keeps every check');
+  await fs.writeFile(path.join(root, '.gitignore'), '');
+  git('add', '.gitignore', 'docs/governance/policy-manifest.json');
+  git('commit', '-q', '-m', 'fast mode');
+  const fast = hook();
+  assert.equal(fast.status, 0, fast.stderr);
+  assert.match(fast.stdout, /LINT FAST=1/);
+  assert.doesNotMatch(fast.stdout, /TYPECHECK/);
+  assert.match(fast.stderr, /fast mode checked format and lint only/);
+  const log = await fs.readFile(path.join(root, '.git/pre-push.log'), 'utf8');
+  assert.deepEqual(log.trim().split('\n').map((line) => line.split('\t')[3]), ['pass', 'pass (fast)']);
 });

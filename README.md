@@ -53,11 +53,13 @@ Full validation runs for broad or harness PRs, selected exact-SHA candidates, PR
 Standalone full verification still includes broad fast verification. CI runs those commands once.
 Outside CI, project gates, changed-file lint, and the harness test suite use the machine-local `agent-heavy` slot limit when it is on `PATH`.
 The [daily workflow](template/docs/ops/automation/LITE_QUICKSTART.md) describes the opt-out.
-Workflows, project gates, and `scripts/ci/**` need explicit downstream adoption, not automatic synchronization.
+Workflows, the `.github/actions/setup` action, project gates, and `scripts/ci/**` need explicit downstream adoption, not automatic synchronization.
 The [CI adoption guide](template/docs/ops/automation/INTEROP_GITHUB.md#ci-budget-defaults) defines required checks and deployment proof.
 The [deployment contract](template/docs/deploy/README.md) separates source, tested, landed, and deployment revisions.
 The [completion record](distribution/ci-budget-completion.md) describes the scope and evidence.
-The public blueprint CI retains its four-job OS/Node matrix unchanged. It does not use the private 5of5 minutes budget.
+The public blueprint CI retains its four-job OS/Node matrix on GitHub-hosted runners. These runners are free for a public repository, and Ubicloud has no macOS runners.
+The blueprint has no dependencies, so its CI runs scripts with `node --run` and needs no package manager.
+Starter CI uses the [CI speed defaults](template/docs/ops/automation/CI_SPEED.md): Ubicloud runners, a blobless clone, a seeded `node_modules` cache, pnpm with supply-chain settings, `bun fmt`, oxlint, `bun check`, parallel build and test jobs at a flat billed-minute cost, affected tests on PRs, and time budgets.
 
 ## Start Here
 
@@ -118,7 +120,8 @@ The script fragment is bootstrap-only. An update does not merge its new commands
    Save `projectUpdatesAvailable`. The update advances that advisory baseline. Resolve managed-file customizations without force overwrite.
 2. If the configured baseline is missing, use the baseline migration procedure below before the update.
 3. Remove retired decisions: `ESLINT_CONFIG_PATH`, `SOURCE_TAG_*`, `ALLOWED_TARGET_TAG_*`, `PROJECT_JSON_PATH_*`, `PROJECT_REQUIRED_TAG_*`, and `EVAL_EVIDENCE_PATH_1`.
-   If absent, add approved values for `EVAL_RUNTIME_VERSION`, `EVAL_PROMPT_VERSION`, and `EVAL_TOOL_CONFIG_VERSION`.
+   If absent, add approved values for `EVAL_RUNTIME_VERSION`, `EVAL_PROMPT_VERSION`, `EVAL_TOOL_CONFIG_VERSION`, and `PROJECT_AFFECTED_TEST_COMMAND`.
+   If the test runner cannot select affected tests, set `PROJECT_AFFECTED_TEST_COMMAND` to the unit test command.
 4. Run `node ./scripts/harness-sync.mjs update --target /path/to/existing-project` from the updated blueprint checkout.
 5. Manually merge these required scripts into the target `package.json`. Preserve unrelated project commands.
 
@@ -132,7 +135,7 @@ The script fragment is bootstrap-only. An update does not merge its new commands
 
    Compare all blueprint-owned commands with the updated `template/package.scripts.fragment.json` and merge any other missing or changed commands.
    `harness:test` now has a per-test timeout and a slowest-tests report. `harness:verify` requires the new command.
-   The new `prepare` script installs the observe-mode `.githooks/pre-push` hook. Harness updates do not copy `.githooks/**`, so copy it first.
+   The new `prepare` script installs the `.githooks/pre-push` hook. The hook stops a push when format, lint, or typecheck fails. Harness updates do not copy `.githooks/**`, so copy it first.
    If `prepare` already exists, append `&&` and the fragment `prepare` command to it. Bootstrap cleanup accepts that chain.
    If the installer file is missing, for example in a Docker dependency layer, the command does nothing. Other installer errors print a warning and do not stop the install.
    If the project already uses other hooks, the installer keeps them. Then call `scripts/automation/pre-push.mjs` from the existing pre-push hook.
@@ -151,10 +154,10 @@ The script fragment is bootstrap-only. An update does not merge its new commands
    If no boundaries apply, record an empty `checks` array and a concrete `rationale`. This reports “not enforced.”
 10. Merge `runtime` into `docs/agent-hardening/evals.config.json`: `provider`, `model`, `runtimeVersion`, `promptVersion`, and `toolConfigVersion` from the approved packet.
     If repo-local prompt or tool configuration files affect agent behavior, add them to `additionalInputPaths`.
-11. In the target repository, run `npm run harness:verify`, `npm run context:compile`, and `npm run eval:refresh`.
-    Then run `npm run context:check`, `npm run eval:integrity`, and `npm run verify:fast`, plus affected project checks.
+11. In the target repository, run `node --run harness:verify`, `node --run context:compile`, and `node --run eval:refresh`.
+    Then run `node --run context:check`, `node --run eval:integrity`, and `node --run verify:fast`, plus affected project checks.
     Changed inputs invalidate previous eval results. A not-run report is valid for integrity, but it is not evaluation evidence.
-12. Before agent activation, record real evaluation execution evidence and the evaluated `runtime`. Run strict `npm run eval:verify`.
+12. Before agent activation, record real evaluation execution evidence and the evaluated `runtime`. Run strict `node --run eval:verify`.
 
 See [the context migration details](distribution/context-refresh.md#existing-project-migration) for snapshot and queue maintenance.
 Do not rerun adoption or overwrite project files with templates to satisfy these contracts.
@@ -204,7 +207,10 @@ Changed hashes, duplicate or unexpected entries, missing coverage, and symlink p
 The new manifest records the review path and its hash. Legacy manifests do not need a fabricated historical configured baseline.
 Normal updates still reject preserved customizations that differ from incoming templates. Reconciliation does not grant an evaluation pass or merge approval.
 
-The current adoption workflow requires Node.js 24 and a `package.json` with an npm, pnpm, or yarn lockfile. New-project configuration currently creates an npm `package-lock.json` or `npm-shrinkwrap.json`. Other stacks can use audit mode, but automatic adoption is not yet supported.
+The current adoption workflow requires Node.js 24 and a `package.json` with a pnpm, npm, yarn, or Bun lockfile.
+New projects use pnpm by default. Configuration writes `pnpm-workspace.yaml` with `minimumReleaseAge`, `strictPeerDependencies`, and `engineStrict`.
+pnpm and Bun write their lockfile with the first dependency, so configuration creates no lockfile for them. An npm project gets `package-lock.json` or `npm-shrinkwrap.json`.
+Harness scripts call each other with `node`, so they work with every package manager. Other stacks can use audit mode, but automatic adoption is not yet supported.
 
 `distribution/bootstrap-questionnaire.json` is the machine-readable decision contract. It covers every placeholder and supplies inference hints for interactive tools. `scripts/bootstrap-configure.mjs` validates an approved decision packet, replaces governed placeholders, and merges non-conflicting package scripts. Interactive clients should call these blueprint-owned interfaces instead of copying their logic.
 
@@ -218,8 +224,8 @@ Cover product behavior, architecture, stack, API/data contracts, security/privac
 For UI projects, include theme/token, shared-component, and interaction anchors in `docs/ui/README.md`.
 Mark absent domains not applicable. Record unresolved facts as owned questions.
 Keep implementation detail in source. Do not duplicate catalogs or create a document for each update.
-After configuration, run `npm run context:compile`, `npm run eval:refresh`, and `npm run verify:fast` in the target.
-Clean bootstrap helpers with `npm run bootstrap:cleanup` after successful configuration.
+After configuration, run `node --run context:compile`, `node --run eval:refresh`, and `node --run verify:fast` in the target.
+Clean bootstrap helpers with `node --run bootstrap:cleanup` after successful configuration.
 
 ## Agent Quickstart Prompts
 
@@ -251,10 +257,10 @@ Implement product work only when the request includes it. Complete the applicabl
 
 ## Root Commands
 
-- `npm run test:root`
-- `npm run test:template-smoke`
-- `npm run test:golden-adopted-repo`
-- `npm test`
+- `node --run test:root`
+- `node --run test:template-smoke`
+- `node --run test:golden-adopted-repo`
+- `node --run test`
 
 Root tests cover the distribution and bootstrap scripts. Template smoke owns the configured harness regression suite, including the CI classifier tests.
 The golden fixture separately checks adoption into a real application. Its standalone full command includes fast checks without a second fast run.

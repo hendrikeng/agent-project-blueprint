@@ -21,22 +21,31 @@ env:
   CI_INSTALL_COMMAND: "{{CI_INSTALL_COMMAND}}"
   PACKAGE_MANAGER_CACHE: "{{PACKAGE_MANAGER_CACHE}}"
   PACKAGE_MANAGER_LOCKFILE: "{{PACKAGE_MANAGER_LOCKFILE}}"
+  # Tests with an expensive full mode can run lighter on PRs outside main. See scripts/ci/full-mode-proof.mjs.
+  # PRs into main, merge groups, and ci-candidate.yml keep the full mode.
+  CI_LIGHT_MODE: ${{ (github.event_name == 'pull_request' && github.base_ref != 'main') && 'true' || '' }}
+
+# Runners: Ubicloud standard size for every job (the Ubicloud GitHub App must be installed). Do not use larger runners.
+# Cost rule: billed minutes per run must not increase. Each job pays its own setup and a rounded minute, so short gates
+# share a job. Each timeout-minutes value is a time budget: a slower job fails. Find the cause; do not raise the budget.
 
 jobs:
   scope:
     name: PR Contract
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
+    runs-on: ubicloud-standard-2
+    timeout-minutes: 2
     # pr-draft.yml converts these opened and reopened PRs; CI starts again on ready_for_review.
     if: ${{ !(github.event.pull_request.draft || ((github.event.action == 'opened' || github.event.action == 'reopened') && github.event.pull_request.user.type != 'Bot' && !startsWith(github.event.pull_request.head.ref, 'release/') && github.event.pull_request.head.repo.full_name == github.repository)) }}
     outputs:
       scope: ${{ steps.scope.outputs.scope }}
     steps:
+      # Full clone: this job reads old file contents. With persist-credentials: false, a blobless clone
+      # cannot download them later in a private repository. Jobs that read no history use a blobless clone.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           package-manager-cache: false
@@ -50,7 +59,7 @@ jobs:
           if git archive "$BASE_SHA" scripts/ci | tar -x -C "$RUNNER_TEMP/base" && node "$RUNNER_TEMP/base/scripts/ci/classify-change.mjs"; then exit 0; fi
           echo 'No usable classifier at the base commit. Selecting full.'
           echo 'scope=full' >>"$GITHUB_OUTPUT"
-      - run: npm run pr:verify
+      - run: node ./scripts/automation/check-pr-contract.mjs
         if: github.event_name == 'pull_request'
 
   fast-gate:
@@ -59,12 +68,12 @@ jobs:
     needs: scope
     if: >-
       always() && !(github.event_name == 'pull_request' && (github.event.pull_request.draft || ((github.event.action == 'opened' || github.event.action == 'reopened') && github.event.pull_request.user.type != 'Bot' && !startsWith(github.event.pull_request.head.ref, 'release/') && github.event.pull_request.head.repo.full_name == github.repository) || (github.event.action == 'edited' && !github.event.changes.base) || (github.event.action == 'labeled' && github.event.label.name != 'ci:full')))
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+    runs-on: ubicloud-standard-2
+    timeout-minutes: 10
     env:
-      # Tests with an expensive full mode can run lighter on PRs outside main. See scripts/ci/full-mode-proof.mjs.
-      # PRs into main, merge groups, and ci-candidate.yml keep the full mode.
-      CI_LIGHT_MODE: ${{ (github.event_name == 'pull_request' && github.base_ref != 'main') && 'true' || '' }}
+      # Build and unit tests run in parallel jobs below. Full Gate requires their results.
+      # Lint and typecheck take seconds, so they run here: a separate job would add billed setup minutes.
+      PROJECT_GATES_IN_JOBS: unit-tests,build
     outputs:
       full: ${{ steps.full.outcome }}
     steps:
@@ -80,16 +89,14 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      - uses: ./.github/actions/setup
         if: needs.scope.outputs.scope != 'metadata'
         with:
           node-version: ${{ env.NODE_VERSION }}
-          package-manager-cache: false
-      - run: corepack enable
-        if: needs.scope.outputs.scope != 'metadata'
-      - run: ${{ env.CI_INSTALL_COMMAND }}
-        if: needs.scope.outputs.scope != 'metadata'
-      - run: npm run eval:refresh && git diff --exit-code -- docs/generated/evals-report.json
+          install-command: ${{ env.CI_INSTALL_COMMAND }}
+          package-manager: ${{ env.PACKAGE_MANAGER_CACHE }}
+          lockfile: ${{ env.PACKAGE_MANAGER_LOCKFILE }}
+      - run: node --run eval:refresh && git diff --exit-code -- docs/generated/evals-report.json
         if: needs.scope.outputs.scope != 'metadata'
       - name: Focused fast validation
         if: needs.scope.outputs.scope != 'metadata'
@@ -97,9 +104,9 @@ jobs:
           SCOPE: ${{ needs.scope.outputs.scope }}
         run: |
           if [ "$SCOPE" = full ] || { [ "$GITHUB_EVENT_NAME" = pull_request ] && [ "$SCOPE" = harness ]; }; then SCOPE=broad; fi
-          npm run verify:fast -- --scope "$SCOPE"
+          node --run verify:fast -- --scope "$SCOPE"
       # Heavy tier: merge groups, or once per PR head when someone adds the ci:full label.
-      - run: npm run verify:full -- --skip-fast
+      - run: node --run verify:full -- --skip-fast
         id: full
         if: (needs.scope.outputs.scope == 'full' || (github.event_name == 'pull_request' && (needs.scope.outputs.scope == 'broad' || needs.scope.outputs.scope == 'harness'))) && (github.event_name == 'merge_group' || github.event.label.name == 'ci:full')
       # ci-candidate.yml reuses this Full only for this exact tree. See scripts/ci/full-reuse.mjs.
@@ -118,43 +125,98 @@ jobs:
           overwrite: true
           retention-days: 7
 
-  release-candidate-gate:
-    name: ${{ github.event_name == 'pull_request' && (github.event.pull_request.draft || ((github.event.action == 'opened' || github.event.action == 'reopened') && github.event.pull_request.user.type != 'Bot' && !startsWith(github.event.pull_request.head.ref, 'release/') && github.event.pull_request.head.repo.full_name == github.repository) || (github.event.action == 'edited' && !github.event.changes.base) || (github.event.action == 'labeled' && github.event.label.name != 'ci:full')) && 'Metadata Release (not evidence)' || 'Release Candidate Gate' }}
+  # The build runs in parallel with Fast Gate and unit tests.
+  project-gate:
+    name: Project build
+    needs: scope
     if: >-
-      !(github.event_name == 'pull_request' && (github.event.pull_request.draft || ((github.event.action == 'opened' || github.event.action == 'reopened') && github.event.pull_request.user.type != 'Bot' && !startsWith(github.event.pull_request.head.ref, 'release/') && github.event.pull_request.head.repo.full_name == github.repository) || (github.event.action == 'edited' && !github.event.changes.base) || (github.event.action == 'labeled' && github.event.label.name != 'ci:full'))) &&
-      ((github.event_name == 'pull_request' && github.base_ref == 'main') || github.event_name == 'merge_group')
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+      always() && needs.scope.result == 'success' &&
+      contains(fromJSON('["product","broad","harness","full"]'), needs.scope.outputs.scope) &&
+      !(github.event_name == 'pull_request' && (github.event.pull_request.draft || ((github.event.action == 'opened' || github.event.action == 'reopened') && github.event.pull_request.user.type != 'Bot' && !startsWith(github.event.pull_request.head.ref, 'release/') && github.event.pull_request.head.repo.full_name == github.repository) || (github.event.action == 'edited' && !github.event.changes.base) || (github.event.action == 'labeled' && github.event.label.name != 'ci:full')))
+    runs-on: ubicloud-standard-2
+    timeout-minutes: 5
+    steps:
+      # Blobless clone: the build must not read old file contents, for example through `git diff`.
+      # A gate that needs them must run in a job with a full clone. Do not use a shallow clone.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          filter: blob:none
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          install-command: ${{ env.CI_INSTALL_COMMAND }}
+          package-manager: ${{ env.PACKAGE_MANAGER_CACHE }}
+          lockfile: ${{ env.PACKAGE_MANAGER_LOCKFILE }}
+      - run: node ./scripts/automation/check-project-gates.mjs --gate build --run
+
+  # Pull requests outside main run only the tests that the diff can reach (the gate affectedCommand).
+  # The ci:full label, PRs into main, and merge groups run the full suite. Full Gate requires the full suite.
+  unit-tests:
+    name: Project unit-tests
+    needs: scope
+    if: >-
+      always() && needs.scope.result == 'success' &&
+      contains(fromJSON('["product","broad","harness","full"]'), needs.scope.outputs.scope) &&
+      !(github.event_name == 'pull_request' && (github.event.pull_request.draft || ((github.event.action == 'opened' || github.event.action == 'reopened') && github.event.pull_request.user.type != 'Bot' && !startsWith(github.event.pull_request.head.ref, 'release/') && github.event.pull_request.head.repo.full_name == github.repository) || (github.event.action == 'edited' && !github.event.changes.base) || (github.event.action == 'labeled' && github.event.label.name != 'ci:full')))
+    runs-on: ubicloud-standard-2
+    timeout-minutes: 5
+    outputs:
+      selection: ${{ steps.tests.outputs.selection }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      - uses: ./.github/actions/setup
         with:
           node-version: ${{ env.NODE_VERSION }}
-          package-manager-cache: false
-      - run: corepack enable
-      - run: ${{ env.CI_INSTALL_COMMAND }}
+          install-command: ${{ env.CI_INSTALL_COMMAND }}
+          package-manager: ${{ env.PACKAGE_MANAGER_CACHE }}
+          lockfile: ${{ env.PACKAGE_MANAGER_LOCKFILE }}
+      - id: tests
+        env:
+          AFFECTED: ${{ github.event_name == 'pull_request' && github.base_ref != 'main' && github.event.label.name != 'ci:full' && '--affected' || '' }}
+        run: node ./scripts/automation/check-project-gates.mjs --gate unit-tests --run $AFFECTED
+
+  release-candidate-gate:
+    name: ${{ github.event_name == 'pull_request' && (github.event.pull_request.draft || ((github.event.action == 'opened' || github.event.action == 'reopened') && github.event.pull_request.user.type != 'Bot' && !startsWith(github.event.pull_request.head.ref, 'release/') && github.event.pull_request.head.repo.full_name == github.repository) || (github.event.action == 'edited' && !github.event.changes.base) || (github.event.action == 'labeled' && github.event.label.name != 'ci:full')) && 'Metadata Release (not evidence)' || 'Release Candidate Gate' }}
+    if: >-
+      !(github.event_name == 'pull_request' && (github.event.pull_request.draft || ((github.event.action == 'opened' || github.event.action == 'reopened') && github.event.pull_request.user.type != 'Bot' && !startsWith(github.event.pull_request.head.ref, 'release/') && github.event.pull_request.head.repo.full_name == github.repository) || (github.event.action == 'edited' && !github.event.changes.base) || (github.event.action == 'labeled' && github.event.label.name != 'ci:full'))) &&
+      ((github.event_name == 'pull_request' && github.base_ref == 'main') || github.event_name == 'merge_group')
+    runs-on: ubicloud-standard-2
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          install-command: ${{ env.CI_INSTALL_COMMAND }}
+          package-manager: ${{ env.PACKAGE_MANAGER_CACHE }}
+          lockfile: ${{ env.PACKAGE_MANAGER_LOCKFILE }}
       - name: Verify release candidate PR
         if: github.event_name == 'pull_request'
-        run: npm run project:gates:release
+        run: node --run project:gates:release
         env:
           RELEASE_HEAD_REF: ${{ github.event.pull_request.head.sha }}
       - name: Verify release candidate merge queue
         if: github.event_name == 'merge_group'
-        run: npm run project:gates:release
+        run: node --run project:gates:release
         env:
           RELEASE_BASE_REF: origin/main
           RELEASE_ALLOW_ANY_BRANCH: "true"
 
   full-gate:
     name: ${{ github.event_name == 'pull_request' && (github.event.pull_request.draft || ((github.event.action == 'opened' || github.event.action == 'reopened') && github.event.pull_request.user.type != 'Bot' && !startsWith(github.event.pull_request.head.ref, 'release/') && github.event.pull_request.head.repo.full_name == github.repository) || (github.event.action == 'edited' && !github.event.changes.base) || (github.event.action == 'labeled' && github.event.label.name != 'ci:full')) && 'Metadata Result' || 'Full Gate' }}
-    needs: [scope, fast-gate, release-candidate-gate]
+    needs: [scope, fast-gate, release-candidate-gate, project-gate, unit-tests]
     if: >-
       always() && !(github.event_name == 'pull_request' && (github.event.pull_request.draft || ((github.event.action == 'opened' || github.event.action == 'reopened') && github.event.pull_request.user.type != 'Bot' && !startsWith(github.event.pull_request.head.ref, 'release/') && github.event.pull_request.head.repo.full_name == github.repository) || (github.event.action == 'edited' && !github.event.changes.base) || (github.event.action == 'labeled' && github.event.label.name != 'ci:full')))
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
+    runs-on: ubicloud-standard-2
+    timeout-minutes: 2
     steps:
       - name: Require all selected checks to succeed
         env:
@@ -164,9 +226,22 @@ jobs:
           RELEASE_REQUIRED: ${{ needs.scope.outputs.scope == 'full' && ((github.event_name == 'pull_request' && github.base_ref == 'main') || github.event_name == 'merge_group') }}
           FULL_RESULT: ${{ needs.fast-gate.outputs.full }}
           FULL_REQUIRED: ${{ needs.scope.outputs.scope == 'full' || (github.event_name == 'pull_request' && (needs.scope.outputs.scope == 'broad' || needs.scope.outputs.scope == 'harness')) }}
+          GATES_REQUIRED: ${{ contains(fromJSON('["product","broad","harness","full"]'), needs.scope.outputs.scope) }}
+          GATES_RESULT: ${{ needs.project-gate.result }}
+          TESTS_RESULT: ${{ needs.unit-tests.result }}
+          TESTS_SELECTION: ${{ needs.unit-tests.outputs.selection }}
         run: |
           test "$SCOPE_RESULT" = success
           test "$FAST_RESULT" = success
+          if [ "$GATES_REQUIRED" = true ]; then
+            test "$GATES_RESULT" = success
+            test "$TESTS_RESULT" = success
+          fi
+          # The full suite runs before a change gets to the integration branch. Selection only makes PR feedback smaller.
+          if [ "$TESTS_SELECTION" = affected ]; then
+            echo 'Unit tests ran only on affected files. Add the ci:full label for the full suite before merge.' >&2
+            exit 1
+          fi
           if [ "$FULL_REQUIRED" = true ] && [ "$FULL_RESULT" != success ]; then
             echo 'This change needs the heavy tier. Add the ci:full label when the PR is final.' >&2
             exit 1

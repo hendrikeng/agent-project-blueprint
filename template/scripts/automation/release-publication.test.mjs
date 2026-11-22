@@ -96,9 +96,10 @@ function run(overrides = {}) {
 
 test('notes contain real inventory and evidence, not unfinished prompts or claimed test passes', () => {
   const notes = renderReleaseNotes({ base: 'previous', head: 'candidate', branch: 'release/2026.09.13.1', warnings: [],
+    changelog: [{ author: 'Some Author', subject: 'fix: first change', pr: '12' }, { author: 'Some Author', subject: 'chore: direct', pr: '' }],
     configFiles: ['.github/workflows/ci.yml'], migrationFiles: ['migrations/001.sql'], mappedStandardChanges: [],
     plans: [{ planId: 'example', title: 'Example feature', filePath: 'docs/exec-plans/completed/example.md', doneEvidence: 'docs/exec-plans/evidence-index/example.md', evidenceBullets: ['Focused check passed.'] }] });
-  assert.match(notes, /^# Release Notes\n/);
+  assert.match(notes, /^# Release Notes\n[\s\S]*?\n## What's Changed\n\n- fix: first change by Some Author in #12\n- chore: direct by Some Author\n\n## /);
   for (const value of ['Example feature', 'migrations/001.sql', 'docs/exec-plans/evidence-index/example.md', 'Focused check passed.']) assert.ok(notes.includes(value));
   assert.doesNotMatch(notes, /Draft|Fill manually|promote user-facing|<previous-tag>|npm run verify:deploy/);
   assert.match(notes, /does not verify deployment health/);
@@ -116,7 +117,7 @@ test('publication uses explicit source range, generated notes, and verified exis
   assert.match(workflow, /SOURCE_SHA: \$\{\{ github.event.pull_request.head.sha \}\}/);
   assert.match(workflow, /GH_TOKEN: \$\{\{ github.token \}\}/);
   assert.doesNotMatch(workflow, /workflow_dispatch:|release edit|--force/);
-  assert.match(workflow, /concurrency:\n  group: release-publication-\$\{\{ github\.repository \}\}\n  queue: max\n  cancel-in-progress: false/);
+  assert.match(workflow, /concurrency:\n {2}group: release-publication-\$\{\{ github\.repository \}\}\n {2}queue: max\n {2}cancel-in-progress: false/);
   assert.ok(result.calls.includes(`git tag --points-at ${'a'.repeat(40)}`));
 });
 

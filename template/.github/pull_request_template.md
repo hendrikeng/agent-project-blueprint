@@ -15,5 +15,5 @@ Merge strategy:
 
 If this selector appears after opening a PR, replace the full PR body with the
 matching branch-class template before marking the PR ready for review. `Fast
-Gate` runs `npm run pr:verify` and rejects missing or mixed branch-class
+Gate` runs `node --run pr:verify` and rejects missing or mixed branch-class
 contracts.

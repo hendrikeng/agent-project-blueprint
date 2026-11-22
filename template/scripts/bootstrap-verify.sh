@@ -6,9 +6,9 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_ROOT"
 
 ./scripts/check-template-placeholders.sh
-npm run context:compile
-npm run eval:refresh
-npm run verify:full
-npm run bootstrap:cleanup
+node --run context:compile
+node --run eval:refresh
+node --run verify:full
+node --run bootstrap:cleanup
 
 echo "[bootstrap-verify] passed"

@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import process from 'node:process';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { inferPlanId } from './lib/plan-metadata.mjs';
 import {
   ACTIVE_PLAN_DIR,
@@ -40,21 +40,25 @@ try {
   if (isCandidateDispatch(head, process.env, event)) {
     gitBytes(['merge-base', '--is-ancestor', head, 'origin/dev']);
   }
-  const branchName = resolveCloseoutBranch(actualBranch, head, process.env, event);
+  const isAncestor = (ancestor, commit) => spawnSync('git', ['merge-base', '--is-ancestor', ancestor, commit]).status === 0;
+  const branchName = resolveCloseoutBranch(actualBranch, head, process.env, event, parents, isAncestor);
   const changeBranchName = event && process.env.GITHUB_EVENT_NAME === 'pull_request'
     ? event.pull_request.head?.ref || branchName : branchName;
+  // A local prediction (verify-fast closeoutPredictionRef) checks the branch that the change will merge into.
+  const targetBranch = !event && process.env.GITHUB_ACTIONS !== 'true' && process.env.PLAN_CLOSEOUT_BRANCH_NAME
+    ? process.env.PLAN_CLOSEOUT_BRANCH_NAME.replace(/^refs\/heads\//, '') : branchName;
   const mergeHeadPath = gitOutput(['rev-parse', '--git-path', 'MERGE_HEAD']);
   const mergeHeads = (existsSync(mergeHeadPath) ? readFileSync(mergeHeadPath, 'utf8') : '').trim().split(/\s+/).filter(Boolean);
   if (isLocalFeatureIteration(actualBranch, process.env, mergeHeads)) {
     console.log('plans:verify:closeout skipped during local feature iteration; CI or an explicit baseline checks delivery.');
     process.exit(0);
   }
-  const requestedBase = resolveCloseoutBase({ head, parents, mergeHeads, event,
+  const requestedBase = resolveCloseoutBase({ head, parents, mergeHeads, event, isAncestor,
     eventName: event ? process.env.GITHUB_EVENT_NAME : null,
     explicitBase: process.env.PLAN_CLOSEOUT_BASE_REF });
   const base = gitOutput(['rev-parse', '--verify', `${requestedBase}^{commit}`]);
   if (event) {
-    const eventBase = resolveCloseoutBase({ head, parents, mergeHeads, event, eventName: process.env.GITHUB_EVENT_NAME });
+    const eventBase = resolveCloseoutBase({ head, parents, mergeHeads, event, isAncestor, eventName: process.env.GITHUB_EVENT_NAME });
     if (base !== gitOutput(['rev-parse', '--verify', `${eventBase}^{commit}`])) {
       throw new Error('Explicit closeout baseline conflicts with the verified CI event.');
     }
@@ -71,8 +75,10 @@ try {
   const readBaseline = file => gitBytes(['show', `${base}:${file}`], { allowFailure: true });
   const readIndex = file => gitBytes(['show', `:${file}`], { allowFailure: true });
   const readWorktree = file => existsSync(file) ? readFileSync(file) : null;
-  if (['dev', 'main'].includes(branchName)) {
-    assertProtectedBranchHasNoActivePlans([...new Set([...worktreeActive, ...indexedActive])], branchName,
+  // A stray PLAN_CLOSEOUT_BRANCH_NAME cannot turn off the rules of a checked-out protected branch.
+  const protectedBranch = ['dev', 'main'].includes(targetBranch) ? targetBranch : ['dev', 'main'].includes(branchName) ? branchName : '';
+  if (protectedBranch) {
+    assertProtectedBranchHasNoActivePlans([...new Set([...worktreeActive, ...indexedActive])], protectedBranch,
       { readBaseline, readIndex, readWorktree });
   }
   const indexedChanges = changedFilesFromNameStatus(gitOutput(['diff', '--cached', '--name-status', base, '-z']));

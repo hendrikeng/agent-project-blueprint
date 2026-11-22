@@ -27,6 +27,12 @@ slice/* or fix/* -> PR -> dev -> release/YYYY.MM.DD.N -> PR -> main
 Implementation PRs target `dev`. Release PRs target `main`, with title `Release YYYY.MM.DD.N` and completed-plan evidence.
 Release fixes also return to `dev`.
 
+`pr:verify` requires real values in these release PR body fields: `Release ID`, `Release branch`, `Target branch`, `Included completed Plan-IDs`, and `Rollback or fix-forward plan`.
+`Release ID`, `Release branch`, and `Target branch` must match the PR. An empty value or a template value such as `YYYY.MM.DD.N` fails.
+If a release has no completed plans, write `none` in `Included completed Plan-IDs`.
+If a project requires more fields, list them in `releasePolicy.requiredPullRequestFields` in `docs/governance/policy-manifest.json`, for example `["Preview URL"]`.
+If a project has no previews, it does not list `Preview URL`, or it writes `not-applicable`.
+
 CI runs scoped fast checks on PRs to `dev` and `main`, and on merge groups targeting `main`.
 Ordinary branch pushes do not run validation.
 Full checks run for broad or harness PRs, selected candidates, and main boundaries. Release PRs and the main merge queue also run release verification.
@@ -62,7 +68,9 @@ Staging, browser smoke checks, and multi-repository deployment coordination rema
 
 After tagging, the same workflow creates a GitHub Release for `vYYYY.MM.DD.N`.
 It uses the existing notes generator and links the release PR. No additional release pipeline is required.
-The notes list completed slices, evidence, configuration changes, and migration files without unfinished template prompts.
+The notes start with the first-parent changes of the range: the subject, the author, and the PR number (`#N`) from a squash subject.
+The notes escape Markdown, HTML, and `@` mentions in subjects and author names.
+Then they list completed slices, evidence, configuration changes, and migration files without unfinished template prompts.
 Validation results remain in the linked evidence. Publication does not prove successful deployment or runtime health.
 
 The workflow derives the landed predecessor from the merged release commits and uses its canonical release tag with the exact original PR head.
@@ -91,11 +99,11 @@ For planned work, use an explicit ledger entry when commit metadata and complete
 
 ## Verification
 
-- If release support is active, run `npm run project:gates:release` to execute all required release gates.
-- Use `npm run release:verify` for the focused range and evidence check.
-- Run `npm run release:notes` to draft release notes from completed plans and accepted mappings.
-- Run `npm run verify:full` before release promotion.
-- Run `npm run verify:deploy` for deployment health checks when a deployed target URL is available.
+- If release support is active, run `node --run project:gates:release` to execute all required release gates.
+- Use `node --run release:verify` for the focused range and evidence check.
+- Run `node --run release:notes` to draft release notes from completed plans and accepted mappings.
+- Run `node --run verify:full` before release promotion.
+- Run `node --run verify:deploy` for deployment health checks when a deployed target URL is available.
 - Keep release evidence in PRs, completed plans, release notes, or the evidence index so a future agent can audit what shipped.
 
 ## Mapping Rules

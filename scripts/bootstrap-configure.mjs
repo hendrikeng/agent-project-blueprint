@@ -85,12 +85,13 @@ function validateValues(questionnaire, values) {
   }
   if (values.NODE_VERSION !== '24') throw new Error('NODE_VERSION must be 24.');
   const lockfilesByCache = {
+    bun: new Set(['bun.lock', 'bun.lockb']),
     npm: new Set(['package-lock.json', 'npm-shrinkwrap.json']),
     pnpm: new Set(['pnpm-lock.yaml']),
     yarn: new Set(['yarn.lock'])
   };
   if (!lockfilesByCache[values.PACKAGE_MANAGER_CACHE]?.has(values.PACKAGE_MANAGER_LOCKFILE)) {
-    throw new Error('PACKAGE_MANAGER_CACHE and PACKAGE_MANAGER_LOCKFILE must describe the same npm, pnpm, or yarn toolchain.');
+    throw new Error('PACKAGE_MANAGER_CACHE and PACKAGE_MANAGER_LOCKFILE must describe the same Bun, npm, pnpm, or yarn toolchain.');
   }
   if (!values.CI_INSTALL_COMMAND.startsWith(`${values.PACKAGE_MANAGER_CACHE} `)) {
     throw new Error('CI_INSTALL_COMMAND must start with the selected package-manager command.');
@@ -202,8 +203,8 @@ async function packagePlan(targetDir, values) {
     if (error?.code !== 'ENOENT') throw error;
     const name = values.PRODUCT.toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^[._-]+|[._-]+$/g, '');
     if (!name || name.length > 214 || ['node_modules', 'favicon.ico'].includes(name)) throw new Error('PRODUCT must produce a non-empty npm package name of at most 214 characters and must not use a reserved name.');
-    if (!['package-lock.json', 'npm-shrinkwrap.json'].includes(values.PACKAGE_MANAGER_LOCKFILE)) {
-      throw new Error('New projects currently require PACKAGE_MANAGER_LOCKFILE to be package-lock.json or npm-shrinkwrap.json.');
+    if (!['pnpm-lock.yaml', 'bun.lock', 'package-lock.json', 'npm-shrinkwrap.json'].includes(values.PACKAGE_MANAGER_LOCKFILE)) {
+      throw new Error('New projects require PACKAGE_MANAGER_LOCKFILE to be pnpm-lock.yaml, bun.lock, package-lock.json, or npm-shrinkwrap.json.');
     }
     const lockPath = path.join(targetDir, values.PACKAGE_MANAGER_LOCKFILE);
     await assertNoSymlink(targetDir, lockPath);
@@ -214,7 +215,8 @@ async function packagePlan(targetDir, values) {
       if (lockError?.code !== 'ENOENT') throw lockError;
     }
     packageJson = { name, private: true, version: '0.1.0', type: 'module', engines: { node: '>=24 <25' } };
-    return { packagePath, packageJson, fragment, lockPath };
+    // pnpm and Bun write their lockfile with the first dependency. A frozen install passes without one until then.
+    return { packagePath, packageJson, fragment, lockPath: ['pnpm', 'bun'].includes(values.PACKAGE_MANAGER_CACHE) ? null : lockPath, packageManager: values.PACKAGE_MANAGER_CACHE };
   }
   if (!packageJson || typeof packageJson !== 'object' || Array.isArray(packageJson)) throw new Error('package.json must contain an object.');
   if (packageJson.scripts !== undefined && (!packageJson.scripts || typeof packageJson.scripts !== 'object' || Array.isArray(packageJson.scripts))) {
@@ -242,6 +244,11 @@ async function mergePackageScripts(plan) {
   }
   const packageJson = { ...plan.packageJson, scripts };
   await fs.writeFile(plan.packagePath, `${JSON.stringify(packageJson, null, 2)}\n`, 'utf8');
+  if (plan.packageManager === 'pnpm') {
+    // Supply-chain settings: wait one day for new releases, and fail on peer dependency and engine conflicts.
+    await fs.writeFile(path.join(path.dirname(plan.packagePath), 'pnpm-workspace.yaml'), 'minimumReleaseAge: 1440\nstrictPeerDependencies: true\nengineStrict: true\n', { encoding: 'utf8', flag: 'wx' })
+      .catch((error) => { if (error?.code !== 'EEXIST') throw error; });
+  }
   if (plan.lockPath) {
     await fs.writeFile(plan.lockPath, `${JSON.stringify({
       name: packageJson.name,

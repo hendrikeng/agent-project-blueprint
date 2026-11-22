@@ -25,7 +25,7 @@ Each queue or completed plan has a `## Metadata` section with these fields:
 | Security-Approval | not-required unless an explicit approval applies; pending or approved when it does |
 | Done-Evidence | pending until complete; then real evidence paths |
 
-Run `npm run plans:verify` to validate the metadata.
+Run `node --run plans:verify` to validate the metadata.
 
 ## Scope And Evidence
 

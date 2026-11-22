@@ -612,11 +612,11 @@ async function assertAdoptionCompatibility(targetDir) {
   try {
     packageStat = await fs.lstat(packagePath);
   } catch (error) {
-    if (error?.code === 'ENOENT') throw new Error('[ADOPTION_UNSUPPORTED] Adopt requires package.json and an npm, pnpm, or yarn lockfile. Use drift for audit-only repositories.');
+    if (error?.code === 'ENOENT') throw new Error('[ADOPTION_UNSUPPORTED] Adopt requires package.json and a Bun, npm, pnpm, or yarn lockfile. Use drift for audit-only repositories.');
     throw error;
   }
   if (!packageStat.isFile() || packageStat.isSymbolicLink()) throw new Error('[ADOPTION_UNSUPPORTED] package.json must be a regular file.');
-  const lockfiles = ['package-lock.json', 'npm-shrinkwrap.json', 'pnpm-lock.yaml', 'yarn.lock'];
+  const lockfiles = ['bun.lock', 'bun.lockb', 'package-lock.json', 'npm-shrinkwrap.json', 'pnpm-lock.yaml', 'yarn.lock'];
   for (const lockfile of lockfiles) {
     try {
       const lockStat = await fs.lstat(path.join(targetDir, lockfile));
@@ -625,7 +625,7 @@ async function assertAdoptionCompatibility(targetDir) {
       if (error?.code !== 'ENOENT') throw error;
     }
   }
-  throw new Error('[ADOPTION_UNSUPPORTED] Adopt requires an npm, pnpm, or yarn lockfile. Use drift until the package manager is explicit.');
+  throw new Error('[ADOPTION_UNSUPPORTED] Adopt requires a Bun, npm, pnpm, or yarn lockfile. Use drift until the package manager is explicit.');
 }
 
 async function preflightTargetPaths(targetDir, manifest, copyEntries, managedEntries, installedManifest) {

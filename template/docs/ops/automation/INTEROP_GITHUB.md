@@ -61,18 +61,22 @@ On a PR, full validation runs only in the run that the `ci:full` label starts. F
 `ci-full-label.yml` removes `ci:full` on each new push, so each PR head pays for the heavy tier once.
 It uses `pull_request_target` so that fork and Dependabot PRs also lose the label. It never checks out PR code.
 Ordinary risk PRs do not require release verification.
-Standalone `npm run verify:full` includes broad fast verification. CI uses `--skip-fast` only after successful broad fast verification in the same job.
-Agent activation additionally requires strict eval evidence through `npm run eval:verify`. Software CI does not execute agent safety evaluations.
+Standalone `node --run verify:full` includes broad fast verification. CI uses `--skip-fast` only after successful broad fast verification in the same job.
+Agent activation additionally requires strict eval evidence through `node --run eval:verify`. Software CI does not execute agent safety evaluations.
 Full Gate aggregates the selected checks and rejects failed, skipped, or canceled required jobs. Its compatibility name does not imply full-suite execution on every PR.
 
 Draft PRs run no CI. `ready_for_review` starts the fast tier. `pr-draft.yml` converts a new non-draft human PR to a draft. CI skips that opened event.
 Labels other than `ci:full` skip gate jobs and cannot cancel a running heavy run.
 PR edits without base changes run only `PR Contract`. Gate jobs are skipped under metadata-only names, so they cannot replace failed or missing code-check evidence.
 Base edits and ready-for-review events run code validation again. Metadata cancellation groups cannot cancel code runs.
-PRs to `main` and merge groups retain release checks. Cache placeholders remain unused.
+PRs to `main` and merge groups retain release checks.
 Starter workflows pin official actions to reviewed commit SHAs with version comments. Review upstream releases and update the pins together.
 The Node24 action runtime requires Actions Runner 2.327.1 or later. Hosted runners supply it; verify any self-hosted runner before adoption.
-Implicit package-manager caching is disabled. Candidate fetches and release pushes retain scoped Git authentication; read-only CI does not persist credentials.
+Implicit package-manager caching is disabled. The setup action caches `node_modules` explicitly. Candidate fetches and release pushes retain scoped Git authentication; read-only CI does not persist credentials.
+
+### CI Speed Defaults
+
+Runners, caches, tools, parallel jobs, affected tests, and time budgets are in [CI Speed](CI_SPEED.md).
 
 ### Test Lane Guards
 
@@ -90,7 +94,7 @@ Harness tests that read only scripts use `createScriptsRepo()`. A full repositor
 ### Light Test Mode
 
 A test with an expensive full mode can run a lighter mode on PRs outside `main`.
-Examples are many stress rounds or a long sweep. `ci.yml` sets `CI_LIGHT_MODE=true` in `Fast Gate` only for those PRs.
+Examples are many stress rounds or a long sweep. `ci.yml` sets `CI_LIGHT_MODE=true` in the workflow environment only for those PRs.
 Other runs get an empty value. PRs into `main`, merge groups, and `ci-candidate.yml` keep the full mode.
 
 Use a light mode only when both conditions are true:

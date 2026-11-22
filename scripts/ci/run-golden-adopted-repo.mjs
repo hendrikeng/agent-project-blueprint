@@ -36,6 +36,7 @@ function replacementForToken(token) {
     PROJECT_LINT_COMMAND: 'node --check src/reading-list.js',
     PROJECT_TYPECHECK_COMMAND: 'node ./scripts/app-contract-check.mjs',
     PROJECT_UNIT_TEST_COMMAND: 'node --test test/reading-list.test.mjs',
+    PROJECT_AFFECTED_TEST_COMMAND: 'node --test test/reading-list.test.mjs',
     PROJECT_BUILD_COMMAND: 'node ./scripts/app-build.mjs',
     GENERATED_AT_UTC_ISO: `${today}T00:00:00.000Z`,
     CONFORMANCE_SOURCE: 'scripts/ci/run-golden-adopted-repo.mjs',

@@ -10,10 +10,11 @@ const VALID_PROFILES = new Set(['fast', 'full', 'release', 'deploy']);
 const VALID_STATUSES = new Set(['required', 'deferred', 'not-applicable']);
 const PLACEHOLDER_REGEX = /\{\{[A-Z0-9_]+\}\}/;
 const FORBIDDEN_AGGREGATE_COMMANDS = [
-  /npm\s+run\s+verify:fast\b/,
-  /npm\s+run\s+verify:full\b/,
-  /npm\s+run\s+project:gates:/,
-  /npm\s+run\s+harness:verify\b/,
+  /(?:npm|bun|pnpm|yarn)\s+(?:run\s+)?verify:fast\b/,
+  /(?:npm|bun|pnpm|yarn)\s+(?:run\s+)?verify:full\b/,
+  /(?:npm|bun|pnpm|yarn)\s+(?:run\s+)?project:gates:/,
+  /(?:npm|bun|pnpm|yarn)\s+(?:run\s+)?harness:verify\b/,
+  /node\s+--run\s+(?:verify:fast|verify:full|project:gates:|harness:verify)/,
   /node\s+\S*check-project-gates\.mjs\b/
 ];
 const NO_OP_COMMANDS = [
@@ -31,13 +32,18 @@ function fail(message) {
 }
 
 function parseArgs(argv) {
-  const options = { profile: 'all', run: false, dryRun: false };
+  const options = { profile: 'all', run: false, dryRun: false, gate: '', affected: false };
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
     if (token === '--run') {
       options.run = true;
     } else if (token === '--dry-run') {
       options.dryRun = true;
+    } else if (token === '--affected') {
+      options.affected = true;
+    } else if (token === '--gate') {
+      options.gate = argv[index + 1] ?? '';
+      index += 1;
     } else if (token === '--profile') {
       options.profile = argv[index + 1] ?? '';
       index += 1;
@@ -57,9 +63,11 @@ function parseArgs(argv) {
 
 function usage() {
   return [
-    'Usage: node ./scripts/automation/check-project-gates.mjs [--profile all|fast|full|release|deploy] [--run] [--dry-run]',
+    'Usage: node ./scripts/automation/check-project-gates.mjs [--profile all|fast|full|release|deploy] [--gate <id>] [--affected] [--run] [--dry-run]',
     '',
-    'Validates docs/governance/project-gates.json and optionally runs required gates for the selected profile.'
+    'Validates docs/governance/project-gates.json and optionally runs required gates for the selected profile.',
+    '--gate selects one gate. --affected runs its affectedCommand, if it has one, and writes selection=affected|full to GITHUB_OUTPUT.',
+    'PROJECT_GATES_IN_JOBS lists gate ids that CI runs in their own jobs. Profile runs skip these gates.'
   ].join('\n');
 }
 
@@ -91,8 +99,8 @@ function isObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
-function validateCommand(gate, findings, templateMode) {
-  const command = String(gate.command ?? '').trim();
+function validateCommand(gate, findings, templateMode, field = 'command') {
+  const command = String(gate[field] ?? '').trim();
 
   if (gate.status === 'required') {
     if (!command) {
@@ -175,6 +183,11 @@ function validateConfig(config, templateMode) {
       findings.push(`Gate '${id || index}' needs a rationale of at least 16 characters.`);
     }
     validateCommand(gate, findings, templateMode);
+    // An empty affectedCommand means no selection, so a deferred or not-applicable gate can keep the key.
+    if (gate.affectedCommand !== undefined && gate.affectedCommand !== '') {
+      if (typeof gate.affectedCommand !== 'string' || status !== 'required') findings.push(`Gate '${id || index}' can declare affectedCommand only as a string on a required gate.`);
+      else validateCommand(gate, findings, templateMode, 'affectedCommand');
+    }
     if (profile === 'fast' || profile === 'full') {
       seenProfiles.add(`${profile}:${id}`);
     }
@@ -202,8 +215,7 @@ function gatesForProfile(config, profile) {
   return config.gates.filter((gate) => gate.profile === profile);
 }
 
-function runGate(gate, { dryRun }) {
-  const command = String(gate.command ?? '').trim();
+function runGate(gate, { dryRun }, command = String(gate.command ?? '').trim()) {
   if (dryRun) {
     console.log(`[project-gates] dry-run ${gate.id}: ${command}`);
     return 0;
@@ -217,6 +229,8 @@ function runGate(gate, { dryRun }) {
 }
 
 async function main() {
+  // Only the pre-push hook sets PRE_PUSH_FAST, and it runs no project gate in fast mode. A leaked value must not drop rules.
+  delete process.env.PRE_PUSH_FAST;
   const options = parseArgs(process.argv.slice(2));
   if (options.help) {
     console.log(usage());
@@ -236,7 +250,18 @@ async function main() {
     process.exit(1);
   }
 
-  const selected = gatesForProfile(config, options.profile);
+  if (options.gate && !config.gates.some((gate) => gate.id === options.gate)) fail(`Unknown gate '${options.gate}'.`);
+  // One selection value per step: a profile run would overwrite it with each gate.
+  if (options.affected && !options.gate) fail('--affected needs --gate.');
+  const inJobs = new Set(String(process.env.PROJECT_GATES_IN_JOBS ?? '').split(',').map((id) => id.trim()).filter(Boolean));
+  const selected = options.gate
+    ? config.gates.filter((gate) => gate.id === options.gate)
+    : gatesForProfile(config, options.profile).filter((gate) => {
+      if (!inJobs.has(gate.id)) return true;
+      // The CI workflow requires the result of this job. See .github/workflows/ci.yml.
+      console.log(`[project-gates] ${gate.id} runs in its own CI job.`);
+      return false;
+    });
   const required = selected.filter((gate) => gate.status === 'required');
   const skipped = selected.filter((gate) => gate.status !== 'required');
   console.log(`[project-gates] verified ${config.gates.length} gate declaration(s); selected ${selected.length} for profile '${options.profile}'.`);
@@ -255,12 +280,19 @@ async function main() {
     return;
   }
   for (const gate of required) {
-    const status = runGate(gate, { dryRun: options.dryRun });
+    const command = String(gate.command ?? '').trim();
+    const affected = options.affected ? String(gate.affectedCommand ?? '').trim() : '';
+    const selection = affected && affected !== command ? 'affected' : 'full';
+    if (options.affected) {
+      console.log(`[project-gates] ${gate.id} selection: ${selection}`);
+      if (process.env.GITHUB_OUTPUT) await fs.appendFile(process.env.GITHUB_OUTPUT, `selection=${selection}\n`);
+    }
+    const status = runGate(gate, { dryRun: options.dryRun }, selection === 'affected' ? affected : command);
     if (status !== 0) {
       process.exit(status);
     }
   }
-  console.log(`[project-gates] profile '${options.profile}' passed.`);
+  console.log(`[project-gates] ${options.gate ? `gate '${options.gate}'` : `profile '${options.profile}'`} passed.`);
 }
 
 main().catch((error) => {

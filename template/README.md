@@ -39,16 +39,16 @@ Use `docs/generated/AGENT-RUNTIME-CONTEXT.md` to find unfinished plans. It is a 
 ## Enforcement and Quality Gates
 
 - Focused iteration: run the relevant project command.
-- Repository consistency: npm run verify:fast.
-- Delivery candidate: npm run verify:full.
-- Documentation and size budgets: npm run docs:verify.
-- Refresh context after state or plan changes: npm run context:compile.
-- Eval integrity: npm run eval:integrity.
-- Agent activation after model, prompt, or tool changes: npm run eval:verify.
+- Repository consistency: node --run verify:fast.
+- Delivery candidate: node --run verify:full.
+- Documentation and size budgets: node --run docs:verify.
+- Refresh context after state or plan changes: node --run context:compile.
+- Eval integrity: node --run eval:integrity.
+- Agent activation after model, prompt, or tool changes: node --run eval:verify.
 
 Declare real project commands in `docs/governance/project-gates.json`.
 Deferred or inapplicable checks need a concrete rationale. Generic harness checks do not prove product behavior.
-Bootstrap helpers are temporary. Run npm run bootstrap:cleanup after configuration and verification.
+Bootstrap helpers are temporary. Run node --run bootstrap:cleanup after configuration and verification.
 
 ## Documentation Updates
 

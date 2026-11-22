@@ -7,7 +7,7 @@
     "node": ">=24 <25"
   },
   "scripts": {
-    "test": "npm run test:root && npm run test:template-smoke && npm run test:golden-adopted-repo",
+    "test": "node --run test:root && node --run test:template-smoke && node --run test:golden-adopted-repo",
     "test:root": "node ./scripts/ci/run-root-tests.mjs",
     "test:template-smoke": "node ./scripts/ci/run-template-smoke.mjs",
     "test:golden-adopted-repo": "node ./scripts/ci/run-golden-adopted-repo.mjs"

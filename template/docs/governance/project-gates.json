@@ -27,6 +27,7 @@
       "profile": "fast",
       "status": "required",
       "command": "{{PROJECT_UNIT_TEST_COMMAND}}",
+      "affectedCommand": "{{PROJECT_AFFECTED_TEST_COMMAND}}",
       "rationale": "Protect focused behavior and regression coverage."
     },
     {
@@ -68,7 +69,7 @@
       "id": "release-verify",
       "profile": "release",
       "status": "required",
-      "command": "npm run release:verify",
+      "command": "node ./scripts/automation/release-verify.mjs",
       "rationale": "Verify release completeness, evidence, and mapping before release promotion."
     },
     {
