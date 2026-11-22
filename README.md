@@ -57,8 +57,11 @@ Workflows, the `.github/actions/setup` action, project gates, and `scripts/ci/**
 The [CI adoption guide](template/docs/ops/automation/INTEROP_GITHUB.md#ci-budget-defaults) defines required checks and deployment proof.
 The [deployment contract](template/docs/deploy/README.md) separates source, tested, landed, and deployment revisions.
 The [completion record](distribution/ci-budget-completion.md) describes the scope and evidence.
-The public blueprint CI retains its four-job OS/Node matrix on GitHub-hosted runners. These runners are free for a public repository, and Ubicloud has no macOS runners.
+The public blueprint CI runs an OS and Node matrix on GitHub-hosted runners: Linux and macOS, with Node 24.13.1, the latest Node 24, and the latest Node 26.
+These runners are free for a public repository, and Ubicloud has no macOS runners.
 The blueprint has no dependencies, so its CI runs scripts with `node --run` and needs no package manager.
+Dependabot (`.github/dependabot.yml`) updates the action pins of the root CI and of the starter workflows in `template/` once a month, in one grouped pull request for each ecosystem.
+Adopted projects own their workflows, so they do not get these updates automatically.
 Starter CI uses the [CI speed defaults](template/docs/ops/automation/CI_SPEED.md): Ubicloud runners, a blobless clone, a seeded `node_modules` cache, pnpm with supply-chain settings, `bun fmt`, oxlint, `bun check`, parallel build and test jobs at a flat billed-minute cost, affected tests on PRs, and time budgets.
 
 ## Start Here
@@ -207,7 +210,10 @@ Changed hashes, duplicate or unexpected entries, missing coverage, and symlink p
 The new manifest records the review path and its hash. Legacy manifests do not need a fabricated historical configured baseline.
 Normal updates still reject preserved customizations that differ from incoming templates. Reconciliation does not grant an evaluation pass or merge approval.
 
-The current adoption workflow requires Node.js 24 and a `package.json` with a pnpm, npm, yarn, or Bun lockfile.
+The current adoption workflow requires Node.js 26 or 24 and a `package.json` with a pnpm, npm, yarn, or Bun lockfile.
+Node 26 is the active LTS line and the default for new projects. An existing project can stay on Node 24, the maintenance line.
+Configuration writes `NODE_VERSION` into `.nvmrc`, the starter workflows, and the `engines` field of a new `package.json`.
+On Node 26, the starter setup action installs Corepack, because Node 25 and later do not include it.
 New projects use pnpm by default. Configuration writes `pnpm-workspace.yaml` with `minimumReleaseAge`, `strictPeerDependencies`, and `engineStrict`.
 pnpm and Bun write their lockfile with the first dependency, so configuration creates no lockfile for them. An npm project gets `package-lock.json` or `npm-shrinkwrap.json`.
 Harness scripts call each other with `node`, so they work with every package manager. Other stacks can use audit mode, but automatic adoption is not yet supported.
@@ -264,5 +270,5 @@ Implement product work only when the request includes it. Complete the applicabl
 
 Root tests cover the distribution and bootstrap scripts. Template smoke owns the configured harness regression suite, including the CI classifier tests.
 The golden fixture separately checks adoption into a real application. Its standalone full command includes fast checks without a second fast run.
-CI runs the golden adoption workflow once on Linux with Node.js 24.x. It uses the public install, adopt, and configure commands.
+CI runs the golden adoption workflow once on Linux with Node.js 26.x. It uses the public install, adopt, and configure commands.
 The smoke and golden fixtures record real harness-test output under fixture-specific eval configs. They do not claim that agent evaluations passed.

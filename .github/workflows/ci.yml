@@ -26,9 +26,11 @@ jobs:
         os:
           - ubuntu-latest
           - macos-latest
+        # Node 26 is the active LTS and the default for new projects. Node 24 is in maintenance: adopters can stay on it.
         node-version:
           - 24.13.1
           - 24.x
+          - 26.x
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -49,5 +51,5 @@ jobs:
         run: node --run test:template-smoke
 
       - name: Golden Adoption Workflow
-        if: matrix.os == 'ubuntu-latest' && matrix.node-version == '24.x'
+        if: matrix.os == 'ubuntu-latest' && matrix.node-version == '26.x'
         run: node --run test:golden-adopted-repo

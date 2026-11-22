@@ -422,6 +422,8 @@ test('configured baseline migration requires explicit package and project-contra
   const packet = await decisions();
   // The old revision has no affected-test decision. The migration adds it before the update.
   const { PROJECT_AFFECTED_TEST_COMMAND: affectedTests, ...oldValues } = packet.values;
+  // The old revision accepts only Node 24. An existing project can stay on Node 24 after the update.
+  oldValues.NODE_VERSION = '24';
   const packetPath = path.join(target, 'decisions.json');
   await fs.writeFile(packetPath, JSON.stringify({ ...packet, values: oldValues }));
   const configured = execute('bootstrap-configure.mjs', ['--target', target, '--decisions', packetPath]);

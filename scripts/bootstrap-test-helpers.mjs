@@ -12,7 +12,7 @@ export async function decisions() {
     GENERATED_AT_UTC_ISO: '2026-03-22T12:00:00.000Z',
     PRODUCT: 'Configured Project',
     PROJECT_LINT_COMMAND: 'eslint "src/**/*.ts"',
-    NODE_VERSION: '24',
+    NODE_VERSION: '26',
     CI_INSTALL_COMMAND: 'npm ci',
     PACKAGE_MANAGER_CACHE: 'npm',
     CODEOWNERS_DEFAULT_TEAM: '@acme/platform',

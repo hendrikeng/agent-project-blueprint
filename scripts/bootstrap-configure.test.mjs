@@ -42,7 +42,7 @@ for (const owner of ['@acme/platform', '@hendrikeng']) test(`bootstrap configure
   const workflow = await fs.readFile(path.join(targetDir, '.github', 'workflows', 'ci.yml'), 'utf8');
   assert.equal(workflow.includes(`CI_INSTALL_COMMAND: ${JSON.stringify('pnpm --filter "@acme/*\\tools" install')}`), true);
   const setup = await fs.readFile(path.join(targetDir, '.github', 'actions', 'setup', 'action.yml'), 'utf8');
-  assert.match(setup, /- if: inputs.package-manager == 'pnpm' \|\| inputs.package-manager == 'yarn'\n\s+shell: bash\n\s+run: corepack enable/);
+  assert.match(setup, /- if: inputs.package-manager == 'pnpm' \|\| inputs.package-manager == 'yarn'\n\s+shell: bash\n\s+run: \|\n[^\n]+\n\s+\[ -x "\$node_bin\/corepack" \] \|\| \(cd "\$RUNNER_TEMP" && npm install --global --prefix "\$\(dirname "\$node_bin"\)" --ignore-scripts corepack@\d+\.\d+\.\d+\)\n\s+"\$node_bin\/corepack" enable\n/, 'Node 26 has no bundled Corepack');
   assert.equal(workflow.match(/- uses: \.\/\.github\/actions\/setup/g)?.length, 4);
   assert.match(workflow, /pull_request:\s+branches: \[dev, main\]\s+types: \[opened, synchronize, reopened, edited, ready_for_review, labeled\]/);
   assert.match(workflow, /merge_group:\s+branches: \[main\]\s+types: \[checks_requested\]/);
@@ -112,11 +112,15 @@ test('bootstrap configure accepts matching source files without Git metadata', a
       assert.equal(spawnSync(process.execPath, [harnessSyncPath, 'install', '--target', targetDir], { env }).status, 0);
       const packetPath = path.join(targetDir, 'docs', 'ops', 'automation', 'bootstrap-decisions.json');
       const packet = await decisions();
-      Object.assign(packet.values, { CI_INSTALL_COMMAND: install, PACKAGE_MANAGER_CACHE: manager, PACKAGE_MANAGER_LOCKFILE: lockfile });
+      // New projects default to Node 26. A project that stays on the Node 24 maintenance line still gets matching engines.
+      const nodeVersion = manager === 'bun' ? '24' : '26';
+      Object.assign(packet.values, { NODE_VERSION: nodeVersion, CI_INSTALL_COMMAND: install, PACKAGE_MANAGER_CACHE: manager, PACKAGE_MANAGER_LOCKFILE: lockfile });
       await fs.writeFile(packetPath, JSON.stringify(packet), 'utf8');
 
       const result = spawnSync(process.execPath, [scriptPath, '--target', targetDir, '--decisions', packetPath], { encoding: 'utf8', env });
       assert.equal(result.status, 0, result.stderr);
+      assert.equal(JSON.parse(await fs.readFile(path.join(targetDir, 'package.json'), 'utf8')).engines.node, nodeVersion === '24' ? '>=24 <25' : '>=26 <27');
+      assert.equal(await fs.readFile(path.join(targetDir, '.nvmrc'), 'utf8'), `${nodeVersion}\n`);
       if (manager === 'npm') assert.equal(JSON.parse(await fs.readFile(path.join(targetDir, lockfile), 'utf8')).lockfileVersion, 3);
       else await assert.rejects(fs.access(path.join(targetDir, lockfile)), { code: 'ENOENT' });
       const workspace = await fs.readFile(path.join(targetDir, 'pnpm-workspace.yaml'), 'utf8').catch(() => null);
@@ -239,6 +243,13 @@ test('bootstrap configure rejects unsupported packet versions and invalid dates'
   assert.match(result.stderr, /valid YYYY-MM-DD calendar date/);
 
   packet.values.CURRENT_STATE_DATE = '2026-03-22';
+  packet.values.NODE_VERSION = '25';
+  await fs.writeFile(packetPath, JSON.stringify(packet), 'utf8');
+  result = spawnSync(process.execPath, [scriptPath, '--target', targetDir, '--decisions', packetPath], { encoding: 'utf8' });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /NODE_VERSION must be 26 or 24/);
+
+  packet.values.NODE_VERSION = '26';
   packet.values.PACKAGE_MANAGER_CACHE = 'pnpm';
   await fs.writeFile(packetPath, JSON.stringify(packet), 'utf8');
   result = spawnSync(process.execPath, [scriptPath, '--target', targetDir, '--decisions', packetPath], { encoding: 'utf8' });

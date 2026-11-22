@@ -29,7 +29,7 @@ function replacementForToken(token) {
     MONEY_AND_NUMERIC_RULE: 'priority scores are integers from 1 through 5',
     CODEOWNERS_DEFAULT_TEAM: '@reading-list/platform',
     CODEOWNERS_SECURITY_TEAM: '@reading-list/security',
-    NODE_VERSION: '24',
+    NODE_VERSION: '26',
     CI_INSTALL_COMMAND: 'npm install --ignore-scripts',
     PACKAGE_MANAGER_CACHE: 'npm',
     PACKAGE_MANAGER_LOCKFILE: 'package-lock.json',
@@ -111,7 +111,7 @@ async function writePackageJson(repoDir) {
     version: '0.0.0-golden',
     type: 'module',
     engines: {
-      node: '>=24 <25'
+      node: '>=26 <27'
     },
     scripts: {
       'app:lint': 'node --check src/reading-list.js',

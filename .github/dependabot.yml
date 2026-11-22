@@ -1,0 +1,25 @@
+# Monthly dependency updates for the blueprint: one grouped pull request for each ecosystem keeps CI cost and noise low.
+# The groups apply only to version updates. Security updates open at once and do not wait for the cooldown.
+# cooldown matches the pnpm minimumReleaseAge of 1440 minutes in new projects: a new release waits one day.
+version: 2
+updates:
+  # The blueprint has no dependencies today. This entry covers dependencies that a later change adds.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 1
+    groups:
+      npm:
+        patterns: ["*"]
+  # The root CI and the starter workflows and setup action in template/ pin actions to commit SHAs.
+  - package-ecosystem: github-actions
+    directories: [/, /template, /template/.github/actions/*]
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 1
+    groups:
+      github-actions:
+        patterns: ["*"]

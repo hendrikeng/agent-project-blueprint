@@ -5,7 +5,7 @@
 // It never runs AI reviews. The log is local and untracked: <git dir>/pre-push.log, one tab-separated line per push.
 // VERIFY_PRE_PUSH=skip skips the checks of a feature-branch push and logs the skip. A gated push to dev or main is refused instead.
 // With validationPolicy.prePushWholeProgram false, a feature-branch push runs only lint-changed with PRE_PUSH_FAST=1, so the
-// project's ESLint configuration can drop type-aware rules, and logs `pass (fast)`. CI runs the typecheck and the type-aware
+// project's ESLint configuration can drop type-aware rules (lint-changed then turns off unused-directive reports), and logs `pass (fast)`. CI runs the typecheck and the type-aware
 // rules. A gated fast-forward to dev or main always runs every check.
 import fs from 'node:fs';
 import path from 'node:path';

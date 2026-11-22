@@ -48,7 +48,7 @@ function replacementForToken(token) {
     MONEY_AND_NUMERIC_RULE: 'not applicable',
     CODEOWNERS_DEFAULT_TEAM: '@smoke/platform',
     CODEOWNERS_SECURITY_TEAM: '@smoke/security',
-    NODE_VERSION: '24',
+    NODE_VERSION: '26',
     CI_INSTALL_COMMAND: 'npm install --ignore-scripts',
     PACKAGE_MANAGER_CACHE: 'npm',
     PACKAGE_MANAGER_LOCKFILE: 'package-lock.json',
@@ -124,7 +124,7 @@ async function writePackageJson(repoDir) {
     version: '0.0.0-smoke',
     type: 'module',
     engines: {
-      node: '>=24 <25'
+      node: '>=26 <27'
     },
     scripts: {
       ...fragment.scripts
