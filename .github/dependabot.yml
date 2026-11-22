@@ -1,5 +1,5 @@
-# Weekly dependency updates for the blueprint. Minor and patch updates share one pull request per ecosystem.
-# Each major update gets its own pull request, so you can read its changelog first.
+# Monthly dependency updates for the blueprint: one grouped pull request for each ecosystem keeps CI cost and noise low.
+# The groups apply only to version updates. Security updates open at once and do not wait for the cooldown.
 # cooldown matches the pnpm minimumReleaseAge of 1440 minutes in new projects: a new release waits one day.
 version: 2
 updates:
@@ -7,19 +7,19 @@ updates:
   - package-ecosystem: npm
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
     cooldown:
       default-days: 1
     groups:
-      npm-minor-patch:
-        update-types: [minor, patch]
+      npm:
+        patterns: ["*"]
   # The root CI and the starter workflows and setup action in template/ pin actions to commit SHAs.
   - package-ecosystem: github-actions
     directories: [/, /template, /template/.github/actions/*]
     schedule:
-      interval: weekly
+      interval: monthly
     cooldown:
       default-days: 1
     groups:
-      actions-minor-patch:
-        update-types: [minor, patch]
+      github-actions:
+        patterns: ["*"]
